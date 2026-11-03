@@ -1,0 +1,8 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    { "label": "SmartShop: Start", "type": "npm", "script": "dev", "isBackground": true, "problemMatcher": [], "presentation": { "reveal": "always", "panel": "dedicated" } },
+    { "label": "SmartShop: Check setup", "type": "npm", "script": "doctor", "problemMatcher": [] },
+    { "label": "SmartShop: Build", "type": "npm", "script": "build", "group": "build", "problemMatcher": [] }
+  ]
+}

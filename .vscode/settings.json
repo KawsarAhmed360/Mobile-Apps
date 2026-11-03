@@ -1,0 +1,10 @@
+{
+  "terminal.integrated.env.osx": {
+    "PATH": "/opt/homebrew/opt/node@24/bin:/opt/homebrew/opt/openjdk@21/bin:${env:HOME}/Library/Android/sdk/platform-tools:${env:PATH}",
+    "JAVA_HOME": "/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home",
+    "ANDROID_HOME": "${env:HOME}/Library/Android/sdk"
+  },
+  "files.exclude": { "**/.data": true },
+  "search.exclude": { "**/node_modules": true, "**/dist": true, "**/android/.gradle": true },
+  "typescript.tsdk": "node_modules/typescript/lib"
+}
