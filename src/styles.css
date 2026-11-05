@@ -1,5 +1,82 @@
 @import "tailwindcss";
 
+/* Shared product discussion and cloud-backed product photos. */
+.product-art.has-photo { position: relative; overflow: hidden; }
+.product-art.has-photo > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.inventory-discussion-link { white-space: nowrap; min-height: 44px; font-size: 12px; }
+.product-comments { border-top: 1px solid var(--border); margin-top: 28px; padding-top: 27px; }
+.community-heading { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; margin-bottom: 20px; }
+.community-heading h3 { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 17px; font-weight: 650; color: #294936; }
+.community-heading h3 > svg { color: #24744f; }
+.community-heading p { font-size: 12px; color: #667a6b; line-height: 1.7; margin-top: 7px; max-width: 420px; }
+.live-label { display: inline-flex; align-items: center; gap: 6px; color: #28714b; background: #edf6eb; border-radius: 20px; padding: 6px 9px; font-size: 10px; font-weight: 650; white-space: nowrap; }
+.live-label > span { width: 6px; height: 6px; border-radius: 50%; background: #378a5d; }
+.comment-compose { border: 1px solid #e2ebdc; background: #f7faf4; border-radius: 12px; padding: 15px; margin-bottom: 22px; }
+.comment-compose .field textarea, .comment-edit .field textarea { font-size: 14px; line-height: 1.6; min-height: 90px; resize: vertical; }
+.comment-compose-footer { margin-top: 11px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.comment-compose-footer > small { font-size: 11px; color: #657760; }
+.comment-compose-footer strong { font-weight: 600; color: #315d40; }
+.comments-list { display: flex; flex-direction: column; gap: 0; }
+.comment-card { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 12px; padding: 18px 0; border-bottom: 1px solid #edf0e9; }
+.comment-avatar { width: 36px; height: 36px; border-radius: 12px; background: #edf2e5; color: #557443; display: grid; place-items: center; font-size: 14px; font-weight: 650; }
+.comment-content { min-width: 0; }
+.comment-meta { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 7px; }
+.comment-meta > div { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.comment-meta strong { font-size: 13px; color: #2c4634; }
+.comment-meta time, .comment-edited { color: #768571; font-size: 10px; }
+.comment-role { font-size: 9px; padding: 3px 6px; background: #e6f1e5; color: #2d6a3d; border-radius: 4px; font-weight: 600; }
+.comment-you { font-size: 10px; color: #6c7d65; }
+.comment-body { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; color: #4c6551; line-height: 1.75; margin-top: 8px; }
+.comment-edited { display: block; margin-top: 5px; }
+.comment-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 11px; }
+.comment-reactions { display: flex; gap: 5px; }
+.comment-reactions > button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid #e3e9dd; border-radius: 7px; background: #fff; color: #65785f; min-width: 53px; min-height: 36px; padding: 7px 10px; font-size: 12px; font-weight: 600; transition: background .15s, border-color .15s; }
+.comment-reactions > button:hover { border-color: #a8c798; background: #f3f8ee; }
+.comment-reactions > button.selected { color: #23683c; border-color: #a7c89d; background: #eaf4e4; }
+.comment-reactions > button.negative { color: #9a614a; border-color: #d4b5a6; background: #fbefe8; }
+.comment-text-action { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: #667d5e; min-height: 34px; }
+.comment-text-action.delete { color: #a76c57; }
+.comment-edit { margin-top: 12px; }
+.comment-delete-confirm { background: #fff5ed; border: 1px solid #efd8c8; border-radius: 9px; padding: 12px; margin-top: 12px; font-size: 12px; color: #805740; }
+.comment-delete-confirm > div { display: flex; gap: 8px; margin-top: 10px; }
+.button.button-danger { color: #fff; background: #ad5a45; }
+.comments-pagination { margin-top: 19px; padding-bottom: 0; }
+.cloud-upload-field { position: relative; }
+.cloud-upload-label { display: block; font-size: 12px; font-weight: 600; color: #536c48; margin-bottom: 9px; }
+.cloud-upload-label small { margin-left: 5px; font-size: 10px; color: #7e8e76; font-weight: 400; }
+.upload-file-input { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.upload-dropzone { width: 100%; min-height: 130px; display: flex; align-items: center; flex-direction: column; justify-content: center; gap: 9px; border: 1px dashed #b8cbae; border-radius: 11px; padding: 20px; color: #4f7544; background: #f7faf3; transition: background .15s; }
+.upload-dropzone:hover { background: #edf5e8; }
+.upload-dropzone strong { font-size: 13px; }
+.upload-dropzone > span { color: #73836b; font-size: 11px; }
+.cloud-upload-field > .notice { margin-top: 10px; }
+.uploaded-file-card { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid #cfe1c7; border-radius: 11px; background: #f7fbf4; }
+.uploaded-file-card > img, .uploaded-file-icon { width: 62px; height: 62px; border-radius: 8px; object-fit: cover; background: #e7f0df; flex-shrink: 0; }
+.uploaded-file-icon { display: grid; place-items: center; color: #568047; }
+.uploaded-file-card > div { flex: 1; min-width: 0; }
+.uploaded-file-card strong { display: block; color: #365a31; font-size: 12px; overflow-wrap: anywhere; }
+.uploaded-file-card > div > span { display: flex; align-items: center; gap: 4px; color: #5f8054; font-size: 10px; margin-top: 5px; line-height: 1.5; }
+.uploaded-file-card a { display: inline-block; color: #316a36; font-size: 11px; margin-top: 4px; text-decoration: underline; text-underline-offset: 2px; }
+@media (max-width: 700px) {
+  .app-shell .community-heading h3 { font-size: 17px; }
+  .app-shell .community-heading p { font-size: 13px; }
+  .app-shell .comment-meta strong { font-size: 14px; }
+  .app-shell .comment-meta time { font-size: 11px; }
+  .app-shell .comment-body { font-size: 14px; }
+  .app-shell .comment-reactions > button, .app-shell .comment-text-action { min-height: 44px; }
+  .app-shell .comment-reactions > button { min-width: 57px; font-size: 13px; }
+  .app-shell .comment-text-action { font-size: 12px; }
+  .app-shell .comment-compose-footer > small { font-size: 12px; }
+  .app-shell .comment-compose-footer > .button { min-height: 44px; font-size: 13px; }
+  .app-shell .cloud-upload-label { font-size: 13px; }
+  .app-shell .upload-dropzone strong { font-size: 14px; }
+  .app-shell .upload-dropzone > span { font-size: 12px; }
+  .app-shell .uploaded-file-card strong { font-size: 13px; }
+  .app-shell .uploaded-file-card > div > span { font-size: 11px; }
+  .app-shell .comments-pagination { flex-wrap: wrap; gap: 12px; font-size: 12px; }
+  .app-shell .comments-pagination .button { min-height: 44px; font-size: 12px; }
+}
+
 @theme {
   --color-shop-green: #187154;
   --color-shop-paper: #f8f9f5;
@@ -1009,3 +1086,4 @@ tbody tr:last-child td { border-bottom: 0; }
   .app-shell .receipt-success p { font-size: 14px; }
   .app-shell .receipt-lines > div { font-size: 14px; }
 }
+.account-photo{width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block}.account-avatar,.topbar-account,.account-profile-avatar{overflow:hidden}

@@ -3,34 +3,45 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=24 <25" },
+  "engines": {
+    "node": ">=24 <25"
+  },
   "scripts": {
     "dev": "concurrently -k -n API,APP -c green,cyan \"npm:dev:api\" \"npm:dev:web\"",
     "dev:api": "tsx watch server/index.ts",
     "dev:web": "vite --host 127.0.0.1",
-    "dev:phone": "concurrently -k -n API,APP -c green,cyan \"npm:dev:api\" \"vite --host 0.0.0.0\"",
+    "dev:phone": "HOST=0.0.0.0 concurrently -k -n API,APP -c green,cyan \"npm:dev:api\" \"vite --host 0.0.0.0\"",
     "typecheck": "tsc --noEmit",
     "build": "npm run typecheck && vite build",
     "test": "tsx --test tests/*.test.ts",
     "android:sync": "npm run build && cap sync android",
     "android:sync:emulator": "CAPACITOR_DEV_SERVER_URL=http://10.0.2.2:5173 npm run android:sync",
     "android:build": "node scripts/android-build.mjs",
+    "android:phone": "node scripts/phone-build.mjs",
     "android:open": "cap open android",
     "android:run": "cap run android",
-    "doctor": "node scripts/doctor.mjs"
+    "doctor": "node scripts/doctor.mjs",
+    "owner:code": "node scripts/owner-code.mjs",
+    "android:usb": "node scripts/usb-install.mjs"
   },
   "dependencies": {
+    "@capacitor-firebase/authentication": "^8.6.0",
     "@capacitor/android": "^8.0.0",
     "@capacitor/core": "^8.0.0",
+    "dotenv": "^17.4.2",
     "express": "^5.1.0",
+    "firebase": "^12.19.0",
+    "firebase-admin": "^14.5.0",
     "framer-motion": "^12.0.0",
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.468.0",
+    "multer": "^2.5.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "zod": "^4.0.0"
   },
   "overrides": {
+    "@grpc/grpc-js": "^1.14.3",
     "glob": "^14.0.2",
     "minimatch": "^11.0.1"
   },
@@ -39,6 +50,7 @@
     "@tailwindcss/vite": "^4.0.0",
     "@types/express": "^5.0.0",
     "@types/jsonwebtoken": "^9.0.7",
+    "@types/multer": "^2.3.0",
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

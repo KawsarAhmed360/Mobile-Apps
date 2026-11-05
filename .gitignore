@@ -15,5 +15,10 @@ android/app/src/main/assets/capacitor.config.json
 android/app/src/main/assets/capacitor.plugins.json
 *.keystore
 *.jks
+android/app/google-services.json
+**/*service-account*.json
+firebase-admin-key.json
+output/
+Mobile Apps Requrement.pdf
 playwright-report/
 test-results/

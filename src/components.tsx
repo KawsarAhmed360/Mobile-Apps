@@ -1,4 +1,5 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { mediaUrl } from './api';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AlertCircle, LoaderCircle, PackageOpen, X } from 'lucide-react';
 
 export const money = (cents: number) => `৳${new Intl.NumberFormat('en-BD', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format((cents || 0) / 100)}`;
@@ -35,10 +36,12 @@ export function Empty({ title, message, children }: { title: string; message: st
   return <div className="empty-state"><div className="empty-icon"><PackageOpen size={29} /></div><h3>{title}</h3><p>{message}</p>{children}</div>;
 }
 
-export function ProductArt({ emoji, category, small = false }: { emoji: string; category?: string; small?: boolean }) {
+export function ProductArt({ emoji, category, imageUrl, small = false }: { emoji: string; category?: string; imageUrl?: string | null; small?: boolean }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  useEffect(() => setImageFailed(false), [imageUrl]);
   const colours = ['sage', 'peach', 'lavender', 'sand', 'blue'];
   const colour = colours[[...(category ?? emoji ?? '')].reduce((n, c) => n + c.charCodeAt(0), 0) % colours.length];
-  return <div className={`product-art ${colour} ${small ? 'art-small' : ''}`} aria-hidden="true"><span>{emoji || '📦'}</span></div>;
+  return <div className={`product-art ${colour} ${small ? 'art-small' : ''} ${imageUrl && !imageFailed ? 'has-photo' : ''}`} aria-hidden="true">{imageUrl && !imageFailed ? <img src={mediaUrl(imageUrl)} alt="" loading="lazy" onError={() => setImageFailed(true)} /> : <span>{emoji || '📦'}</span>}</div>;
 }
 
 export function SubmitButton({ busy, children, className = 'button button-primary', disabled = false }: { busy: boolean; children: ReactNode; className?: string; disabled?: boolean }) {

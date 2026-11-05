@@ -7,6 +7,6 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
-    proxy: { '/api': { target: 'http://127.0.0.1:3001', changeOrigin: true } },
+    proxy: { '/api': { target: process.env.SMARTSHOP_API_PROXY || 'http://127.0.0.1:3001', changeOrigin: true } },
   },
 });
