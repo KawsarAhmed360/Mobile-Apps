@@ -6,11 +6,12 @@ import { z } from 'zod';
 import { mountCommunity } from './community.js';
 import { getServiceConfig, ServiceError, verifyFirebaseIdToken } from './services.js';
 import { mountUploads } from './uploads.js';
+import { verifySignupContact } from './signup-verification.js';
 
 type Row = Record<string, any>;
 type Role = 'owner' | 'staff' | 'customer';
 type AuthRequest = Request & { user?: { id: number; role: Role; sessionId?: string } };
-export type CoreOptions = { db: SyncDatabase; transaction?: <T>(fn: () => T) => T; seed?: boolean; secret: string; demo?: boolean; ownerSetupCode: string; cloud?: boolean };
+export type CoreOptions = { db: SyncDatabase; transaction?: <T>(fn: () => T) => T; seed?: boolean; secret: string; demo?: boolean; ownerSetupCode: string; cloud?: boolean; verifyIdentity?: typeof verifyFirebaseIdToken };
 
 class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -21,11 +22,16 @@ const quantity = z.number().int().min(1).max(100_000);
 const requestId = z.string().min(8).max(120);
 const paymentMethod = z.enum(['cash', 'bkash', 'nagad', 'bank', 'other']);
 const businessDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value, 'Enter a valid calendar date.');
+const iconSegmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+const productIcon = z.string().trim().refine(value => {
+  if (!value || Array.from(value).length > 32) return false;
+  return Array.from(iconSegmenter.segment(value)).length === 1;
+}, 'Choose one product icon.');
 const productInput = z.object({
   name: z.string().trim().min(2).max(120), category: z.string().trim().min(1).max(60),
   unit: z.string().trim().min(1).max(30), price: integer, cost: integer,
   stock: z.number().int().min(0).max(100_000), reorderLevel: z.number().int().min(0).max(100_000),
-  description: z.string().trim().max(2000).default(''), emoji: z.string().trim().max(16).default('📦'),
+  description: z.string().trim().max(2000).default(''), emoji: productIcon.default('📦'),
   uploadId: z.number().int().positive().optional(), imageUrl: z.string().max(2048).optional(),
 });
 
@@ -53,6 +59,7 @@ function safeMoney(value: number): number {
 
 export function createApp(options: CoreOptions) {
   const db = options.db;
+  const verifyIdentity = options.verifyIdentity ?? verifyFirebaseIdToken;
   const demo = options.demo ?? true;
   if (options.cloud && (demo || options.secret.length < 32 || options.ownerSetupCode.length < 12 || !options.transaction)) throw new Error('Cloud mode requires private credentials, durable transactions and demo mode disabled.');
   db.exec(`
@@ -151,6 +158,7 @@ export function createApp(options: CoreOptions) {
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_firebase_uid_unique ON users(firebase_uid)');
   addColumn('products', 'image_url', 'TEXT');
   addColumn('products', 'upload_id', 'INTEGER REFERENCES uploads(id)');
+  addColumn('products', 'archived_at', 'TEXT');
   addColumn('users', 'avatar_url', "TEXT NOT NULL DEFAULT ''");
   addColumn('users', 'avatar_upload_id', 'INTEGER REFERENCES uploads(id)');
   addColumn('users', 'address', "TEXT NOT NULL DEFAULT ''");
@@ -286,7 +294,16 @@ export function createApp(options: CoreOptions) {
     ...(privateFields ? { cost: row.cost, stock: row.stock, reorderLevel: row.reorder_level } : {}),
   });
   const productSql = 'SELECT p.*, COALESCE((SELECT AVG(rating) FROM reviews WHERE product_id=p.id),0) rating, (SELECT COUNT(*) FROM reviews WHERE product_id=p.id) review_count FROM products p';
-  const getProduct = (id: number) => { const row = one(`${productSql} WHERE p.id=?`, id); if (!row) throw new ApiError(404, 'Product not found.'); return row; };
+  const getProduct = (id: number) => {
+    const row = one(`${productSql} WHERE p.id=? AND p.archived_at IS NULL`, id);
+    if (!row) throw new ApiError(404, 'Product is unavailable.');
+    return row;
+  };
+  const getProductPhoto = (uploadId: number, userId: number) => {
+    const asset = one("SELECT * FROM uploads WHERE id=? AND user_id=? AND purpose='product'", uploadId, userId);
+    if (!asset) throw new ApiError(400, 'Choose a product photo uploaded by your account.');
+    return asset;
+  };
   const clients = new Set<Response>();
   const notify = (type: 'catalog' | 'reviews' | 'comments' | 'reactions' | 'shop' | 'payments' | 'alerts' | 'staff', productId?: number) => {
     const body = `event: change\ndata: ${JSON.stringify({ type, ...(productId ? { productId } : {}) })}\n\n`;
@@ -481,11 +498,23 @@ export function createApp(options: CoreOptions) {
     const username = usernameSchema.parse(req.query.username);
     res.json({ available: !one('SELECT id FROM users WHERE username=? COLLATE NOCASE', username) });
   });
-  app.post('/api/auth/register', (req, res) => {
-    const body = z.object({ name: z.string().trim().min(2).max(80), username: usernameSchema, email: z.string().trim().email().max(254), password: z.string().min(8).max(128), phone: z.string().trim().max(30).default('') }).parse(req.body);
-    if (one('SELECT id FROM users WHERE username=? COLLATE NOCASE OR email=? COLLATE NOCASE', body.username, body.email)) throw new ApiError(409, 'That username or email is already registered.');
+  const signupFields = z.object({
+    name: z.string().trim().min(2).max(80), username: usernameSchema, email: z.string().trim().email().max(254),
+    password: z.string().min(8).max(128), phone: z.string().trim().max(30).default(''),
+    idToken: z.string().min(50).max(15000).optional(),
+  });
+  const ensureSignupAvailable = (body: { username: string; email: string }, uid: string | null = null) => {
+    if (one('SELECT id FROM users WHERE username=? COLLATE NOCASE OR email=? COLLATE NOCASE OR firebase_uid=?', body.username, body.email, uid)) {
+      throw new ApiError(409, 'That username or email is already registered. Sign in if it is yours.');
+    }
+  };
+  app.post('/api/auth/register', async (req, res) => {
+    const body = signupFields.parse(req.body);
+    ensureSignupAvailable(body);
+    const verified = await verifySignupContact(body, getServiceConfig().verification, verifyIdentity);
     const result = transaction(() => {
-      const inserted = run('INSERT INTO users(name,username,email,password_hash,role,phone,created_at) VALUES(?,?,?,?,?,?,?)', body.name, body.username, body.email.toLowerCase(), hashPassword(body.password), 'customer', body.phone, now());
+      ensureSignupAvailable(body, verified.uid);
+      const inserted = run('INSERT INTO users(name,username,email,password_hash,role,phone,firebase_uid,email_verified,phone_verified,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)', body.name, body.username, body.email.toLowerCase(), hashPassword(body.password), 'customer', verified.phone, verified.uid, verified.emailVerified, verified.phoneVerified, now());
       const user = one('SELECT * FROM users WHERE id=?', Number(inserted.lastInsertRowid))!;
       ensureCustomerContact(user);
       return authResult(user);
@@ -493,12 +522,12 @@ export function createApp(options: CoreOptions) {
     res.status(201).json(result);
   });
   const setupAttempts = new Map<string, { count: number; expires: number }>();
-  app.post('/api/setup/owner', (req, res) => {
+  app.post('/api/setup/owner', async (req, res) => {
     if (!needsOwner()) throw new ApiError(409, 'The shop owner account is already configured.');
     const key = req.ip ?? 'unknown';
     const attempt = setupAttempts.get(key);
     if (attempt && attempt.expires > Date.now() && attempt.count >= 5) throw new ApiError(429, 'Too many setup attempts. Try again in 15 minutes.');
-    const body = z.object({ name: z.string().trim().min(2).max(80), username: usernameSchema, email: z.string().trim().email().max(254), password: z.string().min(10).max(128), phone: z.string().trim().max(30).default(''), setupCode: z.string().min(1).max(128) }).parse(req.body);
+    const body = signupFields.extend({ password: z.string().min(10).max(128), setupCode: z.string().min(1).max(128) }).parse(req.body);
     const given = createHash('sha256').update(body.setupCode.trim()).digest();
     const expected = createHash('sha256').update(ownerSetupCode!).digest();
     if (!timingSafeEqual(given, expected)) {
@@ -506,10 +535,12 @@ export function createApp(options: CoreOptions) {
       current.count++; setupAttempts.set(key, current);
       throw new ApiError(403, 'The owner activation code is incorrect. Use the code on your Mac.');
     }
-    if (one('SELECT id FROM users WHERE username=? COLLATE NOCASE OR email=? COLLATE NOCASE', body.username, body.email)) throw new ApiError(409, 'That username or email is already registered. Use a new owner email.');
+    ensureSignupAvailable(body);
+    const verified = await verifySignupContact(body, getServiceConfig().verification, verifyIdentity);
     const owner = transaction(() => {
       if (!needsOwner()) throw new ApiError(409, 'The shop owner account is already configured.');
-      const result = run("INSERT INTO users(name,username,email,password_hash,role,phone,created_at) VALUES(?,?,?,?,'owner',?,?)", body.name, body.username, body.email.toLowerCase(), hashPassword(body.password), body.phone, now());
+      ensureSignupAvailable(body, verified.uid);
+      const result = run("INSERT INTO users(name,username,email,password_hash,role,phone,firebase_uid,email_verified,phone_verified,created_at) VALUES(?,?,?,?,'owner',?,?,?,?,?)", body.name, body.username, body.email.toLowerCase(), hashPassword(body.password), verified.phone, verified.uid, verified.emailVerified, verified.phoneVerified, now());
       run('UPDATE users SET disabled=1 WHERE is_demo=1');
       run('UPDATE user_sessions SET revoked_at=? WHERE user_id IN (SELECT id FROM users WHERE is_demo=1)', now());
       return one('SELECT * FROM users WHERE id=?', Number(result.lastInsertRowid))!;
@@ -547,7 +578,7 @@ export function createApp(options: CoreOptions) {
   });
   app.post('/api/auth/verify-contact', auth, async (req: AuthRequest, res) => {
     const body = z.object({ idToken: z.string().min(50).max(15000) }).parse(req.body);
-    const identity = await verifyFirebaseIdToken(body.idToken);
+    const identity = await verifyIdentity(body.idToken);
     const user = one('SELECT * FROM users WHERE id=?', req.user!.id)!;
     if (!identity.email || identity.email.toLowerCase() !== user.email.toLowerCase()) throw new ApiError(403, 'Use the Firebase account with the same email as this SmartShop account.');
     if (user.firebase_uid && user.firebase_uid !== identity.uid) throw new ApiError(403, 'This account is linked to a different Firebase identity.');
@@ -563,12 +594,12 @@ export function createApp(options: CoreOptions) {
   });
   app.get('/api/products', (req, res) => {
     const { search, category, page, limit } = z.object({ search: z.string().max(100).default(''), category: z.string().max(60).default(''), page: z.coerce.number().int().min(1).max(100_000).default(1), limit: z.coerce.number().int().min(1).max(100).default(8) }).parse(req.query);
-    const where = " WHERE p.name LIKE ? ESCAPE '\\' AND (?='' OR p.category=?)";
+    const where = " WHERE p.archived_at IS NULL AND p.name LIKE ? ESCAPE '\\' AND (?='' OR p.category=?)";
     const escapedSearch = search.replace(/[\\%_]/g, '\\$&');
     const args = [`%${escapedSearch}%`, category, category];
     const total = one(`SELECT COUNT(*) n FROM products p${where}`, ...args)!.n;
     const items = all(`${productSql}${where} ORDER BY p.id LIMIT ? OFFSET ?`, ...args, limit, (page - 1) * limit).map(row => product(row));
-    res.json({ items, total, page, pages: Math.max(1, Math.ceil(total / limit)), categories: all('SELECT DISTINCT category FROM products ORDER BY category').map(row => row.category) });
+    res.json({ items, total, page, pages: Math.max(1, Math.ceil(total / limit)), categories: all('SELECT DISTINCT category FROM products WHERE archived_at IS NULL ORDER BY category').map(row => row.category) });
   });
   app.get('/api/products/:id', (req, res) => res.json(product(getProduct(z.coerce.number().int().positive().parse(req.params.id)))));
   const getReviews = (productId: number) => all('SELECT r.*,u.name author FROM reviews r JOIN users u ON u.id=r.user_id WHERE product_id=? ORDER BY created_at DESC,id DESC', productId).map(row => ({ id: row.id, productId: row.product_id, userId: row.user_id, author: row.author, rating: row.rating, body: row.body, createdAt: row.created_at }));
@@ -586,12 +617,12 @@ export function createApp(options: CoreOptions) {
     const timer = setInterval(() => res.write(': heartbeat\n\n'), 25_000);
     req.on('close', () => { clearInterval(timer); clients.delete(res); });
   });
-  app.get('/api/inventory', auth, staff, (_req, res) => res.json(all(`${productSql} ORDER BY p.id`).map(row => product(row, true))));
+  app.get('/api/inventory', auth, staff, (_req, res) => res.json(all(`${productSql} WHERE p.archived_at IS NULL ORDER BY p.id`).map(row => product(row, true))));
   app.get('/api/stock-alerts', auth, staff, (req: AuthRequest, res) => {
     const items = all(`SELECT p.id,p.name,p.stock,p.unit,p.reorder_level,
       CASE WHEN r.stock_at_read=p.stock AND r.reorder_at_read=p.reorder_level THEN 1 ELSE 0 END is_read
       FROM products p LEFT JOIN stock_alert_reads r ON r.product_id=p.id AND r.user_id=?
-      WHERE p.stock<=p.reorder_level ORDER BY p.stock,p.id`, req.user!.id).map(row => ({
+      WHERE p.archived_at IS NULL AND p.stock<=p.reorder_level ORDER BY p.stock,p.id`, req.user!.id).map(row => ({
         id: row.id, name: row.name, stock: row.stock, unit: row.unit, reorderLevel: row.reorder_level, read: !!row.is_read,
       }));
     res.json({ items, unreadCount: items.filter(item => !item.read).length });
@@ -600,7 +631,7 @@ export function createApp(options: CoreOptions) {
     const body = z.object({ productIds: z.array(z.number().int().positive()).max(500) }).parse(req.body);
     transaction(() => {
       for (const id of new Set(body.productIds)) {
-        const p = one('SELECT stock,reorder_level FROM products WHERE id=? AND stock<=reorder_level', id);
+        const p = one('SELECT stock,reorder_level FROM products WHERE id=? AND archived_at IS NULL AND stock<=reorder_level', id);
         if (p) run('INSERT INTO stock_alert_reads(user_id,product_id,stock_at_read,reorder_at_read,read_at) VALUES(?,?,?,?,?) ON CONFLICT(user_id,product_id) DO UPDATE SET stock_at_read=excluded.stock_at_read,reorder_at_read=excluded.reorder_at_read,read_at=excluded.read_at', req.user!.id, id, p.stock, p.reorder_level, now());
       }
     });
@@ -609,8 +640,7 @@ export function createApp(options: CoreOptions) {
   });
   app.post('/api/products', auth, staff, (req: AuthRequest, res) => {
     const body = productInput.parse(req.body);
-    const asset = body.uploadId ? one("SELECT * FROM uploads WHERE id=? AND user_id=? AND purpose='product'", body.uploadId, req.user!.id) : undefined;
-    if (body.uploadId && !asset) throw new ApiError(400, 'Choose an image uploaded through this shop.');
+    const asset = body.uploadId ? getProductPhoto(body.uploadId, req.user!.id) : undefined;
     if (body.imageUrl && !asset) throw new ApiError(400, 'Upload the product image before attaching it.');
     if (asset && body.imageUrl && asset.url !== body.imageUrl) throw new ApiError(400, 'The image URL does not match the uploaded image.');
     const id = transaction(() => {
@@ -621,22 +651,62 @@ export function createApp(options: CoreOptions) {
     });
     notify('catalog', id); notify('alerts'); res.status(201).json(product(getProduct(id), true));
   });
-  app.patch('/api/products/:id', auth, staff, (req, res) => {
+  app.patch('/api/products/:id', auth, staff, (req: AuthRequest, res) => {
     const id = z.coerce.number().int().positive().parse(req.params.id);
-    const previous = getProduct(id);
     const body = z.object({
       name: z.string().trim().min(2).max(120).optional(), category: z.string().trim().min(1).max(60).optional(),
       price: integer.optional(), reorderLevel: z.number().int().min(0).max(100_000).optional(),
       description: z.string().trim().max(2000).optional(),
-    }).strict().refine(value => Object.keys(value).length > 0, 'Enter at least one product detail to update.').parse(req.body);
-    const columns: Record<string,string> = { name: 'name', category: 'category', price: 'price', reorderLevel: 'reorder_level', description: 'description' };
-    const entries = Object.entries(body);
-    transaction(() => {
-      run(`UPDATE products SET ${entries.map(([key]) => `${columns[key]}=?`).join(',')} WHERE id=?`, ...entries.map(([,value]) => value), id);
-      if (body.reorderLevel !== undefined && body.reorderLevel !== previous.reorder_level) run('DELETE FROM stock_alert_reads WHERE product_id=?', id);
+      unit: z.string().trim().min(1).max(30).optional(), cost: integer.optional(), emoji: productIcon.optional(),
+      stock: z.number().int().min(0).max(1_000_000).optional(), expectedStock: z.number().int().min(0).max(1_000_000).optional(),
+      uploadId: z.number().int().positive().nullable().optional(),
+    }).strict()
+      .refine(value => Object.keys(value).length > 0, 'Enter at least one product detail to update.')
+      .refine(value => (value.stock === undefined) === (value.expectedStock === undefined), 'Send the previous stock count with a stock adjustment.')
+      .parse(req.body);
+    const { uploadId, expectedStock, ...details } = body;
+    if (req.user!.role !== 'owner' && [details.unit, details.cost, details.stock, details.emoji, uploadId].some(value => value !== undefined)) {
+      throw new ApiError(403, 'Only the shop owner can change the unit, cost, stock count, icon or photo.');
+    }
+    const columns: Record<string, string> = {
+      name: 'name', category: 'category', unit: 'unit', price: 'price', cost: 'cost', stock: 'stock',
+      reorderLevel: 'reorder_level', description: 'description', emoji: 'emoji',
+    };
+    const updated = transaction(() => {
+      const previous = getProduct(id);
+      if (details.stock !== undefined && previous.stock !== expectedStock && previous.stock !== details.stock) {
+        throw new ApiError(409, 'Stock changed while this form was open. Close and reopen the editor to see the current count.');
+      }
+      const updates = Object.entries(details).map(([key, value]) => [columns[key], value]);
+      if (uploadId !== undefined) {
+        const asset = uploadId === null ? null : getProductPhoto(uploadId, req.user!.id);
+        updates.push(['upload_id', asset?.id ?? null], ['image_url', asset?.url ?? null]);
+      }
+      run(`UPDATE products SET ${updates.map(([column]) => `${column}=?`).join(',')} WHERE id=?`, ...updates.map(([, value]) => value), id);
+      const stockChanged = details.stock !== undefined && details.stock !== previous.stock;
+      if (stockChanged) {
+        run('INSERT INTO stock_movements(product_id,quantity,type,created_at) VALUES(?,?,?,?)', id, details.stock! - previous.stock, 'adjustment', now());
+      }
+      if (stockChanged || (details.reorderLevel !== undefined && details.reorderLevel !== previous.reorder_level)) {
+        run('DELETE FROM stock_alert_reads WHERE product_id=?', id);
+      }
+      return product(getProduct(id), true);
     });
     notify('catalog', id); notify('alerts');
-    res.json(product(getProduct(id), true));
+    res.json(updated);
+  });
+  app.delete('/api/products/:id', auth, ownerOnly, (req, res) => {
+    const id = z.coerce.number().int().positive().parse(req.params.id);
+    const archived = transaction(() => {
+      const row = one('SELECT archived_at FROM products WHERE id=?', id);
+      if (!row) throw new ApiError(404, 'Product not found.');
+      if (row.archived_at) return false;
+      run('UPDATE products SET archived_at=? WHERE id=?', now(), id);
+      run('DELETE FROM stock_alert_reads WHERE product_id=?', id);
+      return true;
+    });
+    if (archived) { notify('catalog', id); notify('alerts'); }
+    res.json({ ok: true });
   });
   app.post('/api/purchases', auth, staff, (req, res) => {
     const body = z.object({ productId: z.number().int().positive(), quantity, unitCost: integer, reference: z.string().trim().max(120).default(''), requestId }).parse(req.body);
@@ -712,7 +782,7 @@ export function createApp(options: CoreOptions) {
       +COALESCE((SELECT SUM(s.total-s.paid-COALESCE((SELECT SUM(a.amount) FROM receipt_allocations a WHERE a.sale_id=s.id),0)) FROM sales s),0) n`)!.n;
     const receiptCollections = one('SELECT COALESCE(SUM(amount),0) n FROM customer_receipts WHERE business_date=?', today)!.n;
     const salesSeries = Array.from({ length: 7 }, (_, i) => { const date = dhakaDate(new Date(Date.now() - (6-i) * 86_400_000)); return { date, sales: one('SELECT COALESCE(SUM(total),0) n FROM sales WHERE business_date=?', date)!.n }; });
-    res.json({ sales: sales.sales, grossProfit: sales.sales - sales.cost, expenses, netProfit: sales.sales - sales.cost - expenses, cashCollected: sales.collected + receiptCollections, dues, lowStock: all(`${productSql} WHERE p.stock<=p.reorder_level ORDER BY p.stock,p.id`).map(row => product(row, true)), salesSeries, totalProducts: one('SELECT COUNT(*) n FROM products')!.n, transactionCount: sales.count, ...(req.user!.role === 'owner' ? { inventoryCost: one('SELECT COALESCE(SUM(stock*cost),0) n FROM products')!.n } : {}), date: today });
+    res.json({ sales: sales.sales, grossProfit: sales.sales - sales.cost, expenses, netProfit: sales.sales - sales.cost - expenses, cashCollected: sales.collected + receiptCollections, dues, lowStock: all(`${productSql} WHERE p.archived_at IS NULL AND p.stock<=p.reorder_level ORDER BY p.stock,p.id`).map(row => product(row, true)), salesSeries, totalProducts: one('SELECT COUNT(*) n FROM products WHERE archived_at IS NULL')!.n, transactionCount: sales.count, ...(req.user!.role === 'owner' ? { inventoryCost: one('SELECT COALESCE(SUM(stock*cost),0) n FROM products WHERE archived_at IS NULL')!.n } : {}), date: today });
   });
   app.get('/api/customers', auth, staff, (_req, res) => res.json(all(`${customerSql} GROUP BY c.id ORDER BY c.id DESC`).map(customerProfile)));
   app.post('/api/customers', auth, staff, (req, res) => {

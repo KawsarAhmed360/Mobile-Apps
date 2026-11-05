@@ -1,0 +1,50 @@
+.shop-emoji, .product-art > span {
+  font-family: 'SmartShop Color Emoji', 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif;
+}
+.product-icon-picker { display: grid; gap: 10px; }
+.product-icon-trigger { justify-self: start; }
+.product-icon-trigger .shop-emoji { font-size: 23px; }
+.product-icon-options {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid #dce5da;
+  border-radius: 12px;
+  background: #f8faf6;
+}
+.product-icon-options p { margin: 0; font-size: .82rem; color: #516955; }
+.product-icon-search { display: flex; align-items: center; gap: 8px; }
+.product-icon-search input, .product-icon-options select {
+  min-width: 0;
+  width: 100%;
+  background: white;
+  border: 1px solid #dce5da;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.product-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(42px, 1fr));
+  gap: 5px;
+  max-height: 234px;
+  overflow: auto;
+  padding: 2px;
+}
+.product-icon-grid button {
+  min-height: 42px;
+  border: 1px solid #e4ebe1;
+  border-radius: 8px;
+  background: white;
+  font-size: 22px;
+}
+.product-icon-grid button:hover, .product-icon-grid button[aria-pressed=true] { background: #dcecd7; border-color: #81a37a; }
+.product-current-photo, .inventory-product-actions { display: flex; align-items: center; gap: 12px; }
+.product-current-photo img { width: 54px; height: 54px; border-radius: 8px; object-fit: cover; }
+.inventory-product-actions button { white-space: nowrap; }
+.product-delete-button { background: #ad3338; color: white; }
+.product-delete-button:hover { background: #87262a; }
+.product-delete-copy { margin: 0; color: #4d6252; }
+.inventory-product-actions { margin-top: 5px; gap: 12px; }
+@media (max-width: 760px) {
+  .inventory-product-actions button { min-height: 42px; }
+}

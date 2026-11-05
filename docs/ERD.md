@@ -1,6 +1,6 @@
 # SmartShop ERD
 
-Generated from the application's **actual in-memory SQLite schema** on 5 November 2026.
+Generated from the application's **actual in-memory SQLite schema** on 6 November 2026.
 
 - [Scalable vector PDF](SmartShop_ERD.pdf)
 - [Editable vector SVG](SmartShop_ERD.svg)
@@ -67,7 +67,7 @@ Tables represented: **19**. Every declared SQL foreign key is listed below; cros
 - **customers**: `id` INTEGER (PK); `name` TEXT; `phone` TEXT; `email` TEXT; `address` TEXT; `created_at` TEXT; `user_id` INTEGER (FK, nullable); `opening_due` INTEGER.
 - **expenses**: `id` INTEGER (PK); `title` TEXT; `amount` INTEGER; `business_date` TEXT; `created_at` TEXT.
 - **product_comments**: `id` INTEGER (PK); `product_id` INTEGER (FK); `user_id` INTEGER (FK); `body` TEXT; `created_at` TEXT; `updated_at` TEXT.
-- **products**: `id` INTEGER (PK); `name` TEXT; `category` TEXT; `unit` TEXT; `price` INTEGER; `cost` INTEGER; `stock` INTEGER; `reorder_level` INTEGER; `description` TEXT; `emoji` TEXT; `created_at` TEXT; `image_url` TEXT (nullable); `upload_id` INTEGER (FK, nullable).
+- **products**: `id` INTEGER (PK); `name` TEXT; `category` TEXT; `unit` TEXT; `price` INTEGER; `cost` INTEGER; `stock` INTEGER; `reorder_level` INTEGER; `description` TEXT; `emoji` TEXT; `created_at` TEXT; `image_url` TEXT (nullable); `upload_id` INTEGER (FK, nullable); `archived_at` TEXT (nullable).
 - **purchases**: `id` INTEGER (PK); `product_id` INTEGER (FK); `quantity` INTEGER; `unit_cost` INTEGER; `reference` TEXT; `created_at` TEXT.
 - **receipt_allocations**: `receipt_id` INTEGER (PK, FK); `sale_id` INTEGER (PK, FK); `amount` INTEGER.
 - **requests**: `kind` TEXT (PK); `request_id` TEXT (PK); `digest` TEXT; `response` TEXT.

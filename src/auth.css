@@ -1,0 +1,102 @@
+.field .password-field-input {
+  position: relative;
+}
+
+.field .password-field-input input {
+  padding-inline-end: 48px;
+}
+
+.password-field-input button {
+  position: absolute;
+  inset: 0 0 0 auto;
+  display: grid;
+  width: 44px;
+  place-items: center;
+  border-radius: 6px;
+  color: #607b4d;
+}
+
+.password-field-input button:hover,
+.password-field-input button:focus-visible {
+  background: #eef5e7;
+}
+
+.signup-verification {
+  display: grid;
+  gap: 16px;
+}
+
+.signup-progress + .signup-details,
+.signup-progress + .signup-verification {
+  margin-top: 16px;
+}
+
+.signup-verification h3 {
+  color: #304b35;
+  font-size: 17px;
+  font-weight: 650;
+  outline: none;
+}
+
+.signup-verification p {
+  color: #637753;
+  font-size: 13px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.signup-progress {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.signup-progress li {
+  border-radius: 5px;
+  padding: 5px 8px;
+  background: #f0f2eb;
+  color: #697660;
+  font-size: 11px;
+}
+
+.signup-progress [aria-current="step"] {
+  background: #e6f0de;
+  color: #325d36;
+  font-weight: 650;
+}
+
+.signup-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: #edf5e8;
+  color: #315f38;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.signup-status svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.signup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.signup-actions > .button {
+  flex: 1 1 140px;
+  min-height: 44px;
+}
+
+.signup-recaptcha {
+  max-width: 100%;
+  overflow-x: auto;
+}

@@ -2,6 +2,7 @@ import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import type { Auth, ConfirmationResult, RecaptchaVerifier as WebRecaptchaVerifier } from 'firebase/auth';
 import { ApiError } from './api';
+export { normalizeSignupPhone } from '../shared/phone';
 
 export interface VerificationConfig {
   demo: boolean;
@@ -42,12 +43,18 @@ export function verificationMessage(error: unknown): string {
 
 async function webAuth(config: VerificationConfig): Promise<Auth> {
   if (!config.firebase?.apiKey || !config.firebase.projectId) throw new VerificationError('Email verification will be available when the shop finishes its verification service setup.');
-  const [{ getApps, initializeApp }, { getAuth, setPersistence, browserSessionPersistence }] = await Promise.all([import('firebase/app'), import('firebase/auth')]);
+  const [{ getApps, initializeApp }, { getAuth, initializeAuth, setPersistence, browserSessionPersistence }] = await Promise.all([import('firebase/app'), import('firebase/auth')]);
   const name = `smartshop-verification-${config.firebase.projectId}`;
   const app = getApps().find(item => item.name === name) ?? initializeApp(config.firebase, name);
-  const auth = getAuth(app);
-  // Verification identities, like shop accounts, stay independent in each browser window.
-  await setPersistence(auth, browserSessionPersistence);
+  let auth: Auth;
+  try {
+    // Start with per-window persistence instead of briefly restoring a shared Firebase login.
+    auth = initializeAuth(app, { persistence: browserSessionPersistence });
+  } catch (error) {
+    if (codeOf(error) !== 'auth/already-initialized') throw error;
+    auth = getAuth(app);
+    await setPersistence(auth, browserSessionPersistence);
+  }
   await auth.authStateReady();
   return auth;
 }
@@ -105,6 +112,46 @@ export async function sendVerificationEmail(config: VerificationConfig, email: s
   if (nativeReady()) { await FirebaseAuthentication.sendEmailVerification(); return; }
   const auth = await webAuth(config);
   await (await import('firebase/auth')).sendEmailVerification(auth.currentUser!);
+}
+
+/** Refresh the actual Firebase identity after returning from the inbox or SMS step. */
+export async function signupVerificationState(config: VerificationConfig, email: string) {
+  await assertSession(config, email);
+  let user;
+  if (nativeReady()) {
+    await FirebaseAuthentication.reload();
+    user = (await FirebaseAuthentication.getCurrentUser()).user;
+  } else {
+    const auth = await webAuth(config);
+    await (await import('firebase/auth')).reload(auth.currentUser!);
+    user = auth.currentUser;
+  }
+  if (!user || user.email?.toLowerCase() !== email.toLowerCase()) {
+    throw new VerificationError('The verification account changed. Return to the signup form and try again.');
+  }
+  return { emailVerified: user.emailVerified, phone: user.phoneNumber ?? null };
+}
+
+/** Use the signup password for Firebase too, even if this email is already signed in. */
+export async function startSignupVerification(config: VerificationConfig, email: string, password: string, switchAccount = false) {
+  requireConfigured(config);
+  const address = email.trim().toLowerCase();
+  const session = await verificationSession(config, address);
+  if (session.anotherAccount && !switchAccount) {
+    throw new VerificationError('A different verification account is open here. Choose “Switch verification account” to use this signup email.', 'verification/account-mismatch');
+  }
+  if (session.connected) {
+    if (nativeReady()) await FirebaseAuthentication.signInWithEmailAndPassword({ email: address, password });
+    else {
+      const auth = await webAuth(config);
+      await (await import('firebase/auth')).signInWithEmailAndPassword(auth, address, password);
+    }
+  } else {
+    await connectVerificationAccount(config, address, password, switchAccount);
+  }
+  const state = await signupVerificationState(config, address);
+  if (!state.emailVerified) await sendVerificationEmail(config, address);
+  return state;
 }
 
 export async function verificationIdToken(config: VerificationConfig, email: string): Promise<string> {

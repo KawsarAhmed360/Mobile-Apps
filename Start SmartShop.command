@@ -19,5 +19,6 @@ if [[ ! -d node_modules ]]; then
   npm ci
 fi
 printf 'Open http://localhost:5173 in Chrome after the app is ready.\n'
+printf 'Wait for the latest Android download QR in this window.\n'
 printf 'Keep this window open. Press Control+C to stop the app.\n\n'
 npm run dev

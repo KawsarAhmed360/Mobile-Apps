@@ -1,26 +1,10 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { networkInterfaces } from 'node:os';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { chooseAddress, privateIPv4 } from '../server/phone-address.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const privateIPv4 = address => {
-  if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(address)) return false;
-  const parts = address.split('.').map(Number);
-  return parts.every(p => p >= 0 && p <= 255) && (parts[0] === 10 ||
-    (parts[0] === 192 && parts[1] === 168) || (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31));
-};
-function chooseAddress() {
-  const addresses = Object.entries(networkInterfaces()).flatMap(([name, entries]) =>
-    (entries ?? []).filter(entry => entry.family === 'IPv4' && !entry.internal && privateIPv4(entry.address))
-      .map(entry => ({ name, address: entry.address })));
-  addresses.sort((a, b) => {
-    const rank = name => name === 'en0' ? 0 : name === 'en1' ? 1 : /^(utun|bridge|docker|veth|vmnet|lo)/i.test(name) ? 3 : 2;
-    return rank(a.name) - rank(b.name) || a.name.localeCompare(b.name);
-  });
-  return addresses[0]?.address;
-}
 function serverUrl(value) {
   const input = value.trim();
   if (!input || /\s/.test(input)) throw new Error('SMARTSHOP_API_URL must be a complete server URL.');
@@ -60,10 +44,19 @@ try {
     throw new Error('Local phone preview HTTP is not enabled in Capacitor. Check SMARTSHOP_PHONE_PREVIEW handling.');
   }
   run(process.execPath, [join(root, 'scripts/android-build.mjs')], env);
-  const output = join(root, 'output'); mkdirSync(output, { recursive: true });
+  const output = join(root, 'output');
+  mkdirSync(output, { recursive: true });
   const usb = process.env.SMARTSHOP_APK_NAME === 'SmartShop-USB.apk';
-  const apkName = usb ? 'SmartShop-USB.apk' : 'SmartShop-Phone.apk';
-  copyFileSync(join(root, 'android/app/build/outputs/apk/debug/app-debug.apk'), join(output, apkName));
+  const latest = process.env.SMARTSHOP_APK_NAME === 'SmartShop-Latest.apk';
+  const apkName = latest ? 'SmartShop-Latest.apk' : usb ? 'SmartShop-USB.apk' : 'SmartShop-Phone.apk';
+  const pendingApk = join(output, `.${apkName}.${process.pid}.tmp`);
+  try {
+    copyFileSync(join(root, 'android/app/build/outputs/apk/debug/app-debug.apk'), pendingApk);
+    renameSync(pendingApk, join(output, apkName));
+  } finally {
+    rmSync(pendingApk, { force: true });
+  }
+  if (latest) process.exit(0);
   const downloadUrl = `${apiUrl}/downloads/${usb ? 'usb' : 'apk'}`;
   const instructions = usb ? 'Keep the USB cable connected and adb reverse tcp:3001 tcp:3001 active.' : 'Both devices must use the same Wi-Fi for this local address.';
   writeFileSync(join(output, usb ? 'usb-connection.txt' : 'phone-connection.txt'), `SmartShop local class demo\nAPI: ${apiUrl}\nAPK download: ${downloadUrl}\n${instructions}\nKeep the Mac API server running.\n`);

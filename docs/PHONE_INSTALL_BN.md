@@ -16,12 +16,21 @@ EMUI 8/9-এর menu path ও data connection যাচাইয়ের জন্
 VS Code-এ project-এর `Mobile Apps` folder থেকে Terminal-এ:
 
 ```bash
-npm run dev:phone
+npm run dev
 ```
 
 এই Terminal চালু রাখো। আগে server চললে একই command দ্বিতীয়বার দেবে না। Browser-এ [SmartShop](http://localhost:5173) খোলা যায়।
 
-## ৩. এক command-এ build ও install
+## ৩. Terminal-এর QR দিয়ে সর্বশেষ APK নাও
+
+Server চালু হওয়ার পর **SmartShop latest APK** লেখার নিচে QR আসা পর্যন্ত অপেক্ষা করো। প্রতিবার server চালুর সময় নতুন APK build হয়। QR ছবি `output/SmartShop-Latest-QR.png` এবং download address `output/latest-phone-connection.txt`-এ পাওয়া যাবে।
+
+- অনুমতিপ্রাপ্ত Android ফোন cable-এ থাকলে QR-এর address USB দিয়ে কাজ করবে। Cable যুক্ত রাখো।
+- USB ফোন পাওয়া না গেলে একই Wi‑Fi-তে থাকা Mac ও ফোনের জন্য local network address ব্যবহার হবে।
+- ফোনে QR scan করে `SmartShop-Latest.apk` download ও install করো। আগে অন্য server address সেভ করা থাকলে **Shop connection settings**-এ Terminal-এ দেখানো API address দাও।
+- QR build ব্যর্থ হলে Terminal-এর error দেখো। `/downloads/latest.apk` নতুন build প্রস্তুত হওয়া পর্যন্ত অপেক্ষা করতে বলবে।
+
+## সরাসরি USB দিয়ে build ও install
 
 অন্য project Terminal-এ:
 

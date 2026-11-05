@@ -28,11 +28,11 @@ Project: **`smartshop-kawsar-20261104`**। [Firebase Console খোলো](http
 
 - **Project settings → Your apps**: Android/web app configuration এবং Android certificate fingerprints।
 - **Authentication → Sign-in method**: Email/Password verification service configured।
-- **Authentication → Users**: যারা আলাদাভাবে verification identity connect করবে, তাদের সেই service account এখানে থাকবে। সব SmartShop Owner/Staff/Customer account স্বয়ংক্রিয়ভাবে এখানে আসে না।
+- **Authentication → Users**: নতুন signup থেকে email verification শুরু করলে Firebase identity এখানে তৈরি হয়। পুরোনো SmartShop account নিজের verification identity connect করলে সেটিও এখানে দেখা যাবে।
 - **Firestore Database**: এই কাজের মধ্যে shop account, customer, product, bill বা comment records migrate/create করা হয়নি।
 - **Storage**: বর্তমান uploaded ছবিগুলো এখানে নেই; সেগুলো Mac-এ। Firebase Storage upload চালু করা হয়নি।
 
-SmartShop-এর প্রধান login custom SQL/JWT system। Firebase Authentication এখন আলাদা contact-verification identity পরিচালনা করে; verification service-এর password ব্যবহারকারী নিজে দেন। একটি Firebase project তৈরি করলেই SQL-এর username/password hash সেখানে import হয় না। এই কাজের যাচাইয়ে বাস্তব inbox-verification completion এখনো নথিবদ্ধ হয়নি। SMS বন্ধ।
+SmartShop-এর প্রধান login custom SQL/JWT system। Firebase Authentication নতুন signup-এর email identity ও verification status পরিচালনা করে। Signup-এ একই password ব্যবহার করা হয়। যাচাইয়ের পরে Firebase UID ও verified status Mac-এর account record-এর সঙ্গে যুক্ত হয়। পুরোনো account-এর login ও verification flow নিজের account থেকে পাওয়া যাবে। SMS বন্ধ।
 
 ## Phone ও browser কীভাবে একই তথ্য পায়
 

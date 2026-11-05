@@ -74,7 +74,7 @@ Customer product-এর review/comment দিতে পারে; Owner ও অ�
 
 ## ৯. Firebase email ও তথ্যের অবস্থান
 
-Firebase-এর Email/Password verification service যুক্ত আছে। নিজের account থেকে verification identity connect করে **Send verification email** দাও। Inbox-এর link খোলার পরে **Check verification** চাপো। এই কাজের যাচাইয়ে real inbox verification এখনো সম্পন্ন বলে নথিবদ্ধ হয়নি। SMS বন্ধ আছে।
+নতুন account-এর signup form পূরণ করে **Send verification email** চাপো। Firebase inbox-এ একটি verification link পাঠায়। সেটি খুলে SmartShop-এ ফিরে এলে যাচাই দেখা যাবে। প্রয়োজন হলে **Check email verification** চাপো, তারপর **Create account**। Signup-এ লেখা password দিয়েই SmartShop-এ sign in করবে। ফোন নম্বর সেভ করা যায়। বিনাখরচের setup-এ SMS বন্ধ আছে।
 
 সব username/password, role, customer ও হিসাব local SQLite-এ থাকে; password আসল লেখায় রাখা হয় না। Firebase Console-এর Authentication users-এ শুধু connected verification identities থাকবে। Firestore-এ shop data বা Storage-এ ছবি পাঠানো হয়নি। [বিস্তারিত data guide](docs/DATA_LOCATIONS_BN.md) পড়ো।
 

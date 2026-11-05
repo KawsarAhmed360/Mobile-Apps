@@ -113,7 +113,7 @@ class Drawing:
 NOTES = {
     'users':['Role: owner / staff / customer.','Contact verification comes from Firebase.'],
     'shop':['Singleton: id must equal 1.','Owner-managed contact and map settings.','map_location_set controls nullable map output.'],
-    'products':['Money stored as integer paisa.','Image asset relationship continues on p2.'],
+    'products':['Money stored as integer paisa.','Archived products retain historical references.', 'Image asset relationship continues on p2.'],
     'customers':['Optional user_id links a login profile.','opening_due is prior debt, not sales revenue.'],
     'sales':['customer_id is optional for walk-in sales.','Cost is a sale-time snapshot.'],
     'sale_items':['Unit price and unit cost are snapshots.'],
@@ -214,7 +214,7 @@ def footer(d,page,total):
     d.line([(35,HEIGHT-65),(WIDTH-35,HEIGHT-65)],BORDER,.75)
     d.text(35,HEIGHT-47,'PK  Primary key     FK  Declared foreign key     U  Unique     ?  Nullable',8.4,MUTED)
     d.text(35,HEIGHT-32,'Cardinality: | = one; circle = optional; crow foot = many. Solid connectors show declared SQL foreign keys.',8.2,MUTED)
-    d.text(WIDTH-35,HEIGHT-32,f'{page} / {total}   |   05 NOV 2026',8.3,MUTED,True,'end')
+    d.text(WIDTH-35,HEIGHT-32,f'{page} / {total}   |   06 NOV 2026',8.3,MUTED,True,'end')
 
 def reference(d,name,fields,x,y,w=225,page=1):
     """A clearly labelled repeated key stub, not an additional entity."""
@@ -321,7 +321,7 @@ def render(schema):
 
     # If an authentication/upload migration has not landed, say so instead of inventing fields.
     missing=expected-set(schema)
-    markdown=['# SmartShop ERD','', 'Generated from the application\'s **actual in-memory SQLite schema** on 5 November 2026.', '',
+    markdown=['# SmartShop ERD','', 'Generated from the application\'s **actual in-memory SQLite schema** on 6 November 2026.', '',
       '- [Scalable vector PDF](SmartShop_ERD.pdf)', '- [Editable vector SVG](SmartShop_ERD.svg)', '',
       'The PDF uses three A3 landscape pages: inventory/accounting on page 1, identity/community/assets on page 2, and customer collections, stock-alert read history and shop settings on page 3. All labels and connectors are vector elements, so the document can be enlarged without raster blur. Reference stubs on page 3 repeat keys from pages 1/2 and are not additional entities.', '',
       '## Regenerate', '', 'Run `scripts/generate-erd.py` with a Python runtime containing ReportLab. The script loads `createApp` into an isolated in-memory database and reads SQLite table, foreign-key and unique-index metadata. It does not copy customer records, tokens, passwords or production data.', '',

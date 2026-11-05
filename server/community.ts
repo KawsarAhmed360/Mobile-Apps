@@ -69,7 +69,7 @@ export function mountCommunity(app: Express, { db, auth, optionalAuth, notify, t
       }
     };
   const productExists = (id: number) => {
-    if (!one('SELECT id FROM products WHERE id=?', id)) throw new CommunityError(404, 'Product not found.');
+    if (!one('SELECT id FROM products WHERE id=? AND archived_at IS NULL', id)) throw new CommunityError(404, 'Product is unavailable.');
   };
   const commentExists = (id: number) => {
     const result = one('SELECT id,product_id,user_id FROM product_comments WHERE id=?', id);
@@ -120,6 +120,7 @@ export function mountCommunity(app: Express, { db, auth, optionalAuth, notify, t
   app.patch('/api/comments/:id', auth, route((req, res) => {
     const id = idSchema.parse(req.params.id);
     const comment = commentExists(id);
+    productExists(Number(comment.product_id));
     if (comment.user_id !== req.user!.id) throw new CommunityError(403, 'You can only edit your own comments.');
     const { body } = bodySchema.parse(req.body);
     db.prepare('UPDATE product_comments SET body=?,updated_at=? WHERE id=?').run(body, new Date().toISOString(), id);
@@ -141,6 +142,7 @@ export function mountCommunity(app: Express, { db, auth, optionalAuth, notify, t
     const { value } = z.object({ value: z.enum(['like', 'dislike']).nullable() }).parse(req.body);
     const changeReaction = () => {
       const comment = commentExists(id);
+      productExists(Number(comment.product_id));
       if (value === null) db.prepare('DELETE FROM comment_reactions WHERE comment_id=? AND user_id=?').run(id, req.user!.id);
       else db.prepare('INSERT INTO comment_reactions(comment_id,user_id,value) VALUES(?,?,?) ON CONFLICT(comment_id,user_id) DO UPDATE SET value=excluded.value').run(id, req.user!.id, value === 'like' ? 1 : -1);
       return { productId: Number(comment.product_id), result: getComment(id, req.user!.id) };
