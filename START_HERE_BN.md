@@ -1,120 +1,84 @@
-# SmartShop শুরু করার সহজ গাইড
+# SmartShop ব্যবহার করার সহজ গাইড
 
-## তোমার Mac-এর বর্তমান setup
+আপডেট: **৫ নভেম্বর ২০২৬**। শেষ সিদ্ধান্ত হলো সম্পূর্ণ বিনাখরচের **Mac local server + USB-তে নিজের Huawei P10 (Android 9)**। Cloud deployment ও billing-এর কাজ বাতিল করা হয়েছে। Emulator আর চালানো হবে না। Mac চালু থাকা অবস্থায় app ও browser কাজ করবে।
 
-Node.js 24, project packages, Java 21, Android Studio, Android SDK এবং ARM64 emulator image install হয়েছে। VS Code-এ `Mobile Apps` folder খোলা হয়েছে। এই setup আবার শুরু থেকে করার প্রয়োজন নেই।
+## ১. Mac-এ অ্যাপ চালাও
 
-প্রতিদিনের কাজ শুরু করতে VS Code-এ **Terminal → New Terminal**, তারপর:
-
-```bash
-npm run dev
-```
-
-Chrome-এ [SmartShop খোলো](http://localhost:5173)। Server আগে থেকেই চললে একই command দ্বিতীয়বার দেবে না; `Port 5173 is already in use` হলে চলতি server ব্যবহার করো।
-
-Android emulator-এ app update করার সময় আরেকটি Terminal-এ:
+VS Code-এ `Mobile Apps` folder খোলো। **Terminal → New Terminal** থেকে দাও:
 
 ```bash
-npm run android:sync:emulator
-npm run android:build
+npm run dev:phone
 ```
 
-এতে Android development APK তৈরি হবে: `android/app/build/outputs/apk/debug/app-debug.apk`। VS Code-এ code বদলালে চালু emulator-এর preview-ও Vite দিয়ে update হবে। এই preview Mac-এর local server ব্যবহার করে; এটি Play Store-এ দেওয়ার production APK নয়।
+তারপর [SmartShop খোলো](http://localhost:5173)। একই server আগে চললে দ্বিতীয়বার command দেবে না। `Port ... already in use` দেখালে চলতি server ব্যবহার করো। বন্ধ করতে ওই Terminal-এ **Control+C** চাপবে।
 
-এই Mac-এ তৈরি virtual device-এর নাম **Medium Phone API 37.0**, ARM64। API 37 image-টি ভারী; প্রথম cold boot-এ কয়েক মিনিট লাগতে পারে। একসঙ্গে একটি emulator ব্যবহার করো। Performance প্রয়োজনমতো পরে হালকা stable image দিয়ে সামঞ্জস্য করা যাবে।
+## ২. Huawei ফোনে USB debugging চালু করো
 
-নিচের অংশগুলো নতুন করে setup করা বা কোনো সমস্যা হলে reference হিসেবে ব্যবহার করবে।
+1. ফোনে **Settings → System → About phone** খোলো।
+2. **Build number**-এ ৭ বার চাপো; PIN চাইলে ফোনেই নিজের PIN দাও।
+3. **System → Developer options**-এ ফিরে **USB debugging** চালু করো।
+4. Data cable দিয়ে Mac-এ লাগিয়ে ফোন unlock রাখো। USB mode-এ **File transfer** বেছে নাও। শুধু charge হওয়া মানেই data connection প্রস্তুত নয়।
+5. ফোনে debugging request এলে নিজের Mac যাচাই করে **Allow** দাও।
 
-এই project একটি দোকানের Android app তৈরির কাজ। তুমি VS Code-এ কাজ করবে। শুরুতে Mac-এর browser-এ app চালিয়ে দেখব; Android-এ চালানোর জন্য পরে Android Studio ও SDK ব্যবহার করব।
+EMUI 8/9-এর এই settings path এবং data connection যাচাই Huawei-এর [official নির্দেশনায়](https://consumer.huawei.com/mu/support/content/en-gb00698619/) আছে। Menu-এর নাম ভাষা/version অনুযায়ী সামান্য বদলাতে পারে।
 
-প্রথম সংস্করণে sample দোকানের তথ্য থাকবে। এটি শেখা ও পরীক্ষা করার development version। সব course requirement-এর অবস্থা [পরিকল্পনায়](docs/SMARTSHOP_REQUIREMENTS.md) দেওয়া আছে।
+## ৩. Cable দিয়ে install ও চালাও
 
-## ১. VS Code-এ project খোলো
-
-1. **Visual Studio Code** খোলো।
-2. উপরের menu থেকে **File → Open Folder…** চাপো।
-3. এই `Mobile Apps` folder নির্বাচন করো:
-
-   ```text
-   /Users/kawsarahmed/Documents/CSE pdf Book /5. Fifth Semester/CSE 510 (SM) Mobile App Lab/Mobile Apps
-   ```
-
-4. Project-এর নিজের files যাচাই করে VS Code trust চাইলে সিদ্ধান্ত নাও।
-5. **Terminal → New Terminal** চাপো। নিচে লেখার জায়গা খুলবে। পরের command-গুলো সেখানেই লিখবে।
-
-Project-এর `.vscode/settings.json` নতুন VS Code Terminal-এ Homebrew-এর Node 24-এর path যোগ করে। Setup চলার আগে Terminal খোলা থাকলে পুরোনো Terminal বন্ধ করে নতুনটি খোলো।
-
-## ২. Node.js পাওয়া যাচ্ছে কি না দেখো
+Mac-এর server-এর Terminal চালু রাখো। আরেকটি project Terminal-এ দাও:
 
 ```bash
-node --version
-npm --version
+npm run android:usb
 ```
 
-Node-এর version `v24…` হওয়া দরকার। `command not found` দেখালে এবং Homebrew দিয়ে Node 24 install করা থাকলে একই Terminal-এ এটি দাও:
+এটি physical phone খুঁজে APK তৈরি করবে, USB connection দিয়ে Mac API যুক্ত করবে, `output/SmartShop-USB.apk` install করে SmartShop খুলবে। Emulator ব্যবহার করবে না। `unauthorized` দেখালে ফোন unlock করে অনুমতির prompt শেষ করো। ফোন পাওয়া না গেলে data cable/USB port পরীক্ষা করো।
 
-```bash
-export PATH="/opt/homebrew/opt/node@24/bin:$PATH"
-```
+Cable যুক্ত থাকা ও USB reverse চালু থাকা অবস্থায় একই Wi-Fi দরকার নেই। Mac-এর server এবং cable চালু রাখবে। Cable খুললে বা device restart করলে connection reset হতে পারে; আবার cable লাগিয়ে command দাও। বর্তমান USB app API address হলো `http://127.0.0.1:3001`—এটি USB-এর মাধ্যমে Mac-এ যায়।
 
-তারপর আবার version-এর command দাও। এই পরিবর্তন শুধু বর্তমান Terminal-এর জন্য; নতুন Terminal খুললে আবার দিতে হতে পারে।
+Cable ছাড়া ব্যবহার করতে চাইলে Mac ও ফোন একই Wi-Fi-তে রাখো। App-এর **Shop connection settings**-এ Mac-এর বর্তমান LAN address দিয়ে **Test connection → Save and reconnect** করো। বিস্তারিত [ফোনের গাইডে](docs/PHONE_INSTALL_BN.md)। Mac বন্ধ থাকলে shared data/login পাওয়া যাবে না।
 
-Node install করা না থাকলে official [Node.js download](https://nodejs.org/en/download) থেকে Node 24 LTS-এর macOS Apple Silicon/ARM64 installer ব্যবহার করা যায়। এই project-এর setup-এ Node install করা হয়ে থাকলে আবার install করতে হবে না।
+## ৪. নিজের Owner account চালু করো
 
-## ৩. Project-এর প্রয়োজনীয় packages বসাও
+আগে নিজের email দিয়ে customer account তৈরি করে থাকলে সেই account-এ sign in করো। নতুন হলে **Sign in → Create an account** থেকে নিজের নাম, unique username, email, phone ও password দাও। Public registration-এ Customer হয়।
 
-Project-এর Terminal-এ দাও:
+দোকানের প্রথম real Owner করার জন্য:
 
-```bash
-npm install
-```
+1. Mac-এর project Terminal-এ `npm run owner:code` চালাও।
+2. অ্যাপের account icon চাপো। **Activate your shop owner** অংশে ওই private code লেখো।
+3. **Activate as shop owner** চাপো। নিজের account, password ও history থাকবে; role হবে Owner।
 
-প্রথমবার internet লাগবে। কাজ শেষ হলে আবার লেখার prompt ফিরে আসবে। Packages আগে install করা থাকলে এই ধাপ পুনরায় করার প্রয়োজন নেই, যদি না dependency বদলায়।
+Code chat-এ পাঠাবে না। এটি owner একবার চালু করে এবং sample accounts বন্ধ করে। Sample account-এর নাম বদলালেই নিজের real account হয় না। Password ও PIN নিজেই লিখবে।
 
-## ৪. App চালাও
+## ৫. নিজের profile ও ছবি
 
-```bash
-npm run dev
-```
+Owner, Staff বা Customer—সবার account icon-এর **Your profile** অংশ থেকে নিজের নাম, mobile, address ও profile photo বদলানো যাবে। JPG, PNG বা WebP ছবি দাও; সর্বোচ্চ 5 MB। Owner-এর ছবি **Shop settings → Owner details** থেকেও দেওয়া যায়।
 
-Terminal চালু রাখো। Chrome-এ খোলো:
+ছবি Mac-এর `.data/uploads` folder-এ থাকে, Firebase-এ যায় না। App server-এর media address দিয়ে সেটি দেখায়। Registered Customer-এর profile সংশ্লিষ্ট customer ledger contact-এর সঙ্গে যুক্ত থাকে; owner-এর Customers list-এ সেই contact/profile দেখা যায়।
 
-[http://localhost:5173](http://localhost:5173)
+## ৬. দোকানের তথ্য ও Staff access
 
-না খুললে [http://127.0.0.1:5173](http://127.0.0.1:5173) চেষ্টা করো।
+Owner হিসেবে **Shop settings** খোলো। নিজের name/phone ও shop name, contact, address, opening hours বদলে সংশ্লিষ্ট **Save** চাপো। Exact map pin-এর জন্য latitude ও longitude দুটো দাও; দুটো ফাঁকা রাখলে address দিয়ে location খোঁজা হবে।
 
-এই একটি command app-এর interface এবং তথ্য রাখার local server দুটোই চালায়। বন্ধ করতে Terminal-এ **Control + C** চাপবে। পরে আবার `npm run dev` দিলে চালু হবে।
+Staff করতে চাইলে আগে তাকে নিজের account তৈরি করতে বলো। **Shop settings → Staff access**-এ নাম, username বা email দিয়ে খুঁজে **Make staff** চাপো। **Remove staff access** দিলে আবার Customer হবে। Staff stock, sales, expenses ও customer balance-এর কাজ করতে পারে; shop/staff settings Owner-এর।
 
-আরেকটি সহজ উপায়: Finder-এ project folder খুলে **Start SmartShop.command**-এ double-click করো। এটি প্রয়োজন হলে packages install করে server চালাবে। তারপর নিজে Chrome-এ উপরের address খোলো; script browser নিজে খুলবে না। একই সময়ে দুইভাবে server চালানোর প্রয়োজন নেই।
+## ৭. Customer-এর বাকি ও নতুন bill
 
-## ৫. Sample account দিয়ে দেখো
+**Customers → Add customer** থেকে mobile, email ও address-সহ contact দাও। অ্যাপের আগের কোনো পাওনা থাকলে **Opening due**-তে দাও। এটি নতুন sale বা লাভ নয়। Contact edit করা এবং **View ledger** থেকে bills/payments দেখা যায়।
 
-Local development-এ এই accounts ব্যবহার করা হবে:
+পরে টাকা আদায় হলে payment entry দাও। তা opening balance, তারপর সবচেয়ে পুরোনো unpaid bills কমায়। **New sale**-এ customer বেছে নিলে আগের due দেখায়। যেমন আগের due ৳100, নতুন bill ৳200, পাওয়া টাকা ৳250 হলে ৳100 পুরোনো due আদায় এবং ৳150 নতুন bill payment; নতুন বাকি ৳50। পুরোনো আদায় আবার sale/profit হয় না।
 
-| Account | Email | Password |
-| --- | --- | --- |
-| Owner | `owner@smartshop.local` | `SmartShop@123` |
-| Customer | `customer@smartshop.local` | `Customer@123` |
+## ৮. আলাদা login, comments ও alert
 
-এগুলো শুধু sample project-এর account। নিজের আসল password এখানে ব্যবহার করবে না।
+এক window-এ Owner ও অন্য window-এ Customer একই সময়ে sign in করতে পারে। কারও login/logout অন্য account বদলাবে না। Refresh বা ওই tab restore করলে identity থাকবে; নতুন window অন্য window-এর Owner login নেবে না। Android নিজের session মনে রাখে।
 
-- Customer হিসেবে product catalog ও shop-এর তথ্য দেখো।
-- Owner হিসেবে dashboard, stock ও হিসাবের অংশ দেখো।
-- একটি product কেনার entry করে stock বাড়ছে কি না দেখো।
-- Sale করে stock ও dashboard বদলাচ্ছে কি না দেখো।
-- Customer দিয়ে product review দাও।
+Customer product-এর review/comment দিতে পারে; Owner ও অন্য Customer সেই discussion দেখতে পারে। Like/dislike count live বদলায়। Owner/Staff-এর bell-এ low-stock unread alert আসে। এটি app-এর ভেতরের alert; background phone push নয়।
 
-প্রথম সংস্করণের login token শুধু app-এর চলতি memory-তে থাকে। Browser refresh করলে আবার login করতে হতে পারে। কিন্তু server-এর `.data` folder-এর database-এ save হওয়া হিসাব থেকে যায়। `.data` folder মুছে দিলে local তথ্য হারাবে।
+## ৯. Firebase email ও তথ্যের অবস্থান
 
-## ৬. Setup ও build পরীক্ষা
+Firebase-এর Email/Password verification service যুক্ত আছে। নিজের account থেকে verification identity connect করে **Send verification email** দাও। Inbox-এর link খোলার পরে **Check verification** চাপো। এই কাজের যাচাইয়ে real inbox verification এখনো সম্পন্ন বলে নথিবদ্ধ হয়নি। SMS বন্ধ আছে।
 
-```bash
-npm run doctor
-```
+সব username/password, role, customer ও হিসাব local SQLite-এ থাকে; password আসল লেখায় রাখা হয় না। Firebase Console-এর Authentication users-এ শুধু connected verification identities থাকবে। Firestore-এ shop data বা Storage-এ ছবি পাঠানো হয়নি। [বিস্তারিত data guide](docs/DATA_LOCATIONS_BN.md) পড়ো।
 
-এতে কোন সফটওয়্যার আছে এবং কোনটি লাগবে দেখা যাবে। Android Studio/SDK এখনো না থাকলেও browser-এ development শুরু করা যাবে।
-
-Project check-এর commands:
+## ১০. সমস্যা হলে
 
 ```bash
 npm run typecheck
@@ -122,85 +86,4 @@ npm test
 npm run build
 ```
 
-কোনো error হলে error-এর সম্পূর্ণ text পাঠাবে। Error না বুঝে project-এর file বা database মুছবে না।
-
-## ৭. Mac-এর ভেতরে Android Emulator তৈরি করো
-
-Android app build করতে [Android Studio](https://developer.android.com/studio) এবং Android SDK লাগবে। Code লেখা VS Code-এই চলবে। এই project-এ **Java 21** ব্যবহার করা হয়েছে: বর্তমান Android Studio-র bundled Java 25 দিয়ে Gradle 8-এর build চলে না। `npm run android:build` এই Mac-এর সঠিক Java বেছে নেয়। [Android-এর Java configuration নির্দেশনা](https://developer.android.com/build/jdks)
-
-তোমার নির্বাচিত পথ হলো Mac-এ emulator: কম্পিউটারের screen-এ একটি virtual Android phone খুলবে। এখন একটি device ও একটি system image দিয়েই শুরু করব।
-
-1. Mac-এর **Apple Silicon** version-এর Android Studio install শেষ হলে খোলো। আগে install হয়ে থাকলে আবার install কোরো না।
-2. প্রথমবার SDK setup wizard দেখাবে। Download list ও প্রতিটি license পড়ে নিজের সিদ্ধান্ত দেবে।
-3. SDK Platform, Platform Tools, Build Tools এবং **Android Emulator** component লাগবে। Project-এর build-এর জন্য Android API 36 SDK ব্যবহার করা হবে।
-4. Welcome screen-এ **More Actions → Virtual Device Manager** খোলো। Project খোলা থাকলে **View → Tool Windows → Device Manager** থেকে খোলা যায়।
-5. **Create Device / +** চাপো। Phone-এর তালিকা থেকে মাঝারি screen-এর Pixel profile নির্বাচন করো, যেমন Pixel 6a পাওয়া গেলে সেটি। **Next** চাপো।
-6. Stable **API 36 / Android 16** system image নির্বাচন করো। **ABI / Architecture-এ `arm64-v8a` বা ARM64** আছে কি না নিশ্চিত হও; Mac M1-এর জন্য x86_64 image বেছো না। Image download না থাকলে download icon চাপো এবং শর্ত পড়ে সিদ্ধান্ত দাও।
-7. Device-এর নাম দিতে পারো `SmartShop_Pixel_API36`। Graphics প্রথমে **Automatic** রাখো; অন্য advanced setting শুরুতে বদলানোর দরকার নেই। **Finish** চাপো।
-8. Device Manager-এ device-এর পাশের **▶ / Launch** চাপো। প্রথমবার Android চালু হতে কিছু সময় লাগবে। Android-এর home screen দেখা গেলে emulator প্রস্তুত।
-
-[Google-এর virtual device নির্দেশনা](https://developer.android.com/studio/run/managing-avds)। Android Studio-র version অনুযায়ী button-এর নাম সামান্য বদলাতে পারে।
-
-## ৮. Emulator-এ SmartShop চালাও
-
-প্রথম VS Code Terminal-এ server চালু রাখো:
-
-```bash
-npm run dev
-```
-
-দ্বিতীয় Terminal-এ দাও:
-
-```bash
-CAPACITOR_DEV_SERVER_URL=http://10.0.2.2:5173 npm run android:sync
-npm run android:open
-```
-
-`android` folder এখনো তৈরি না হয়ে থাকলে, একবার `npm run build` এবং `npx cap add android` দিয়ে project তৈরি করতে হবে। তারপর উপরের sync/open commands ব্যবহার করবে।
-
-Android Studio project খুলে Gradle sync শেষ হতে দাও। উপরের device selector-এ তোমার `SmartShop_Pixel_API36` emulator নির্বাচন করে **Run ▶** চাপো। App install ও চালু হওয়া পর্যন্ত অপেক্ষা করো। এটি device test করার ধাপ; এই গাইড নিজে APK পরীক্ষায় pass হওয়ার প্রমাণ নয়।
-
-Emulator-এর Chrome-এ `http://10.0.2.2:5173` খুলেও আগে server-এর connection পরীক্ষা করা যাবে। Emulator-এ `localhost` নিজের virtual phone-কে বোঝায়; `10.0.2.2` দিয়ে Mac-এর local server পাওয়া যায়। [Google-এর networking নির্দেশনা](https://developer.android.com/studio/run/emulator-networking-address)
-
-Server চালু থাকলে React-এর code save করার পর live preview-তে পরিবর্তন দেখা যাবে। Android configuration/native code বদলালে sync ও Run আবার করতে হবে।
-
-Terminal থেকে Java পাওয়া না গেলে Android Studio install থাকার পর বর্তমান Terminal-এর জন্য:
-
-```bash
-export JAVA_HOME="/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
-```
-
-এই emulator setup development-এর জন্য HTTP ব্যবহার করে। Customer-এর release build-এর আগে চলতি Terminal-এ `CAPACITOR_DEV_SERVER_URL` set করা থাকলে `unset CAPACITOR_DEV_SERVER_URL` দেবে, production HTTPS backend configure করবে, তারপর আবার `npm run android:sync` করবে। শুধু emulator-এর development APK customer-কে দেওয়া যাবে না।
-
-## ৯. চাইলে পরে নিজের Android ফোনে পরীক্ষা
-
-এটি local পরীক্ষা। Mac ও ফোন একই Wi-Fi-তে থাকবে এবং Mac-এর server চালু থাকবে। এই server-এ sample data ব্যবহার করবে।
-
-প্রথম Terminal-এ:
-
-```bash
-npm run dev:phone
-```
-
-Terminal-এর **Network** address অথবা Mac-এর **System Settings → Wi-Fi → Details → TCP/IP** থেকে Mac-এর local IP খুঁজে নাও। যেমন `192.168.1.10`। তোমার IP আলাদা হবে।
-
-ফোনের browser-এ `http://তোমার-Mac-এর-IP:5173` খোলো। উদাহরণ: `http://192.168.1.10:5173`।
-
-Android project-এর ভেতরে একই live preview চালাতে, অন্য Terminal-এ প্রকৃত IP বসিয়ে:
-
-```bash
-CAPACITOR_DEV_SERVER_URL=http://192.168.1.10:5173 npm run android:sync
-npm run android:open
-```
-
-এখানে `192.168.1.10` উদাহরণ; নিজের Mac-এর IP বসাবে। এই setting-এর APK Mac-এর development server-এর ওপর নির্ভর করবে। Release build করার আগে এই setting বাদ দিয়ে production backend যুক্ত করতে হবে।
-
-USB দিয়ে Android Studio থেকে physical phone-এ চালাতে হলে ফোনে Developer options ও USB debugging চালু করতে হবে। ফোনটি Mac-এ লাগিয়ে নিজের Mac-এর debugging request চিনে অনুমতি দেবে; এরপর Android Studio-র device selector থেকে ফোনটি নির্বাচন করা যাবে।
-
-## ১০. App ও server-এর সম্পর্ক
-
-APK install হলেই database internet-এ চলে যায় না। Mac বন্ধ করলে local server-ও বন্ধ থাকবে। Customer-এর নিজের ফোনে যেকোনো জায়গা থেকে app ব্যবহারের জন্য server/database deploy করতে হবে এবং app-এ সেই server-এর HTTPS address দিতে হবে। `.env.example`-এ `VITE_API_URL`-এর নমুনা আছে।
-
-প্রথম milestone-এ email/phone-এর আসল verification, cloud uploads, GraphQL, on-device ML, generative AI, Crystal Reports, সম্পূর্ণ supplier/returns/payment ledger এবং production deployment-এর আলাদা কাজ বাকি থাকবে। এগুলো শেষ ও পরীক্ষা না হওয়া পর্যন্ত working feature হিসেবে জমা দেওয়া যাবে না।
-
-দোকানের আসল নাম, logo, address, map location, contact ও products পরে তোমার তথ্য দিয়ে বসাতে হবে। Sample shop-এর তথ্যকে আসল দোকানের তথ্য ধরে ব্যবহার করবে না।
+Final profile/USB পরিবর্তনের আগের full run-এ **৫৩টি পরীক্ষা পাস** করেছে; শেষ যাচাই status-এ থাকবে। Error বুঝতে না পারলে text দেখাও। `.data`, uploads বা private backups মুছবে না। ক্লাসের জন্য [demo checklist](docs/CLASS_DEMO_BN.md) পড়ো।

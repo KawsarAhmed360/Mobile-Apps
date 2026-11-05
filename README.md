@@ -1,82 +1,68 @@
 # SmartShop
 
-A single-shop Android application with an owner/staff workspace and a customer-facing product catalog. Built with React, TypeScript, Tailwind CSS and Capacitor, with an Express API and a local SQLite database for the first development milestone.
+SmartShop is a single-shop Android app and browser interface for products, purchases, sales, expenses, customer dues and public product discussions. It uses React, TypeScript, Tailwind CSS, Framer Motion and Capacitor, with a permission-checked Express REST API and SQLite accounting database.
 
-For the guided Mac/VS Code setup, read **[START_HERE_BN.md](START_HERE_BN.md)**. The full scope and course requirement mapping are in **[docs/SMARTSHOP_REQUIREMENTS.md](docs/SMARTSHOP_REQUIREMENTS.md)**.
+Current scope, **5 November 2026**: a free local Mac server and a physical Huawei P10 running Android 9, connected over USB. Permanent cloud deployment and billing setup were cancelled at the user's request. The Mac must stay on while the phone or browser uses shared data.
 
-## Local development
+- [সহজ বাংলা গাইড](START_HERE_BN.md)
+- [USB দিয়ে ফোনে install](docs/PHONE_INSTALL_BN.md)
+- [ক্লাসের ১২টি requirement](docs/CLASS_DEMO_BN.md)
+- [কোন তথ্য কোথায় থাকে](docs/DATA_LOCATIONS_BN.md)
+- [Implementation status](docs/IMPLEMENTATION_STATUS.md)
+- [ERD PDF](docs/SmartShop_ERD.pdf) and [schema notes](docs/ERD.md)
+- [Full course scope](docs/SMARTSHOP_REQUIREMENTS.md)
 
-Use **Node.js 24 LTS**. From this project folder:
+## Run locally
+
+Use Node.js 24 and run commands from the project root:
 
 ```bash
 npm install
-npm run dev
+npm run dev:phone
 ```
 
-Open [http://localhost:5173](http://localhost:5173). The Vite development server proxies `/api` to the local API on port 3001. Both processes must remain running.
+Open [SmartShop](http://localhost:5173). Keep that terminal running. Start only one server instance. The API uses port 3001; the interface uses port 5173.
 
-If Homebrew's keg-only Node installation is not on the current terminal's path:
+## Install on the USB phone
+
+Enable USB debugging on the physical phone, connect a data cable and approve your own Mac on the phone. Then, in a second project terminal:
 
 ```bash
-export PATH="/opt/homebrew/opt/node@24/bin:$PATH"
+npm run android:usb
 ```
 
-The project VS Code settings include that Node path for newly created integrated terminals. Alternatively, double-click `Start SmartShop.command` in Finder to start the local server, then open the browser address above manually.
+The script selects a physical device, builds a bundled-interface APK, connects phone port 3001 to Mac port 3001 with `adb reverse`, installs the APK and starts SmartShop. It never starts or selects an emulator. The USB build is `output/SmartShop-USB.apk` and uses `http://127.0.0.1:3001` through that USB connection.
 
-Development accounts:
+Keep the cable connected and Mac server running. Shared Wi-Fi is not needed while USB reverse is active. Reconnecting/restarting a device can remove the reverse connection; run the USB command again. Without USB, choose the Mac's current LAN API address in **Shop connection settings** and use the same Wi-Fi. USB installation and real phone checks must be recorded separately from a successful APK build.
 
-| Role | Email | Password |
-| --- | --- | --- |
-| Owner | `owner@smartshop.local` | `SmartShop@123` |
-| Customer | `customer@smartshop.local` | `Customer@123` |
+## Accounts and pictures
 
-These are local demonstration credentials. Use sample data for development. Authentication tokens are held in memory; refreshing may require signing in again. Persistent local data is stored under `.data/`, which is ignored by Git.
+Public registration creates a customer account. The first real owner can activate an existing real customer from **Your account → Activate your shop owner**, using the private code displayed by `npm run owner:code` on the Mac. Activation preserves the account's ID, password and history, and disables sample accounts.
+
+Only the owner can grant/revoke staff under **Shop settings → Staff access**. Staff can manage stock, sales, expenses and customer balances; owner settings and staff management stay owner-only.
+
+Each browser window selects its own session. Refreshing or restoring that tab preserves its identity; a fresh window starts signed out. A Customer window cannot adopt another window's Owner account. Android remembers its own session across app restarts. Logout revokes the selected session. Clearing device storage or revoking an account can require sign-in again.
+
+Owner, Staff and Customer can edit their own profile and profile photo under **Your account → Your profile**. Owner details/photo are also available in **Shop settings**. Uploaded product/profile images are saved on the Mac under `.data/uploads`; SQLite stores their metadata and `/api/media/...` URL. These are local server uploads, not Firebase cloud storage.
 
 ## Commands
 
 | Command | Purpose |
 | --- | --- |
-| `npm run doctor` | Check local prerequisites |
-| `npm run dev` | Start local API and browser app |
-| `npm run dev:phone` | Expose the development interface on the local network |
-| `npm run typecheck` | Type-check the project |
-| `npm test` | Run backend tests |
+| `npm run dev` | Start the local API and browser interface |
+| `npm run dev:phone` | Start both for local network/phone testing |
+| `npm run android:usb` | Build, connect, install and launch on a physical USB phone |
+| `npm run android:phone` | Build a bundled-interface APK for the Mac's LAN address |
+| `npm run owner:code` | Display the private, one-time owner activation code locally |
+| `npm run typecheck` | Check TypeScript |
+| `npm test` | Run session, authorization, accounting, community and upload checks |
 | `npm run build` | Check types and build the interface |
-| `npm run android:sync` | Build and copy interface files into the existing Android project |
-| `npm run android:sync:emulator` | Sync with the Mac emulator's local preview URL |
-| `npm run android:build` | Build a debug APK using the installed Java 21 |
-| `npm run android:open` | Open the Android project in Android Studio |
-| `npm run android:run` | Run the Android project on an available device |
+| `npm run doctor` | Check local prerequisites |
 
-## Android development
+## Data and verification
 
-This Mac now has Android Studio, Java 21, SDK 36/37 and a `Medium_Phone_API_37.0` ARM64 emulator installed. A debug APK was built, installed and launched in that emulator. Current Android Studio bundles Java 25; this project's Gradle version needs Java 21 instead. `npm run android:build` selects the installed Homebrew Java 21. Android Studio uses the project's local Java configuration. Follow the [Android virtual device guide](https://developer.android.com/studio/run/managing-avds) if creating another device.
+Firebase project `smartshop-kawsar-20261104` has Android/web registrations and Email/Password verification setup. Firebase currently supplies the separate email-verification identity. Primary SmartShop accounts, salted password hashes, roles, sessions and accounting records remain in local SQLite. No shop data was migrated to Firestore, no cloud API was deployed, and uploaded images do not go to Firebase Storage.
 
-If the `android/` project has not been generated yet, run `npm run build` and `npx cap add android` once. Subsequent interface changes use `npm run android:sync`.
+SMS is off. Real inbox verification has not yet been recorded in this work. The initial course requirement for cloud-backed file uploads remains incomplete even though local photo upload works. See [implementation status](docs/IMPLEMENTATION_STATUS.md) for remaining PDF requirements and test evidence.
 
-Keep `npm run dev` running in one terminal. In another terminal, point the Android development container at the Mac through the emulator's host alias:
-
-```bash
-npm run android:sync:emulator
-npm run android:build
-npm run android:open
-```
-
-Select the emulator in Android Studio and press Run, or use the already installed SmartShop icon. The emulator's Chrome can also open `http://10.0.2.2:5173` to check connectivity. See [Android emulator network addresses](https://developer.android.com/studio/run/emulator-networking-address). On this 8 GB Mac the API 37 image is resource intensive; use one emulator and allow time for the first boot. Routine interface work can use the browser preview.
-
-A physical phone is an optional second test target. For a phone preview, run `npm run dev:phone` and replace the example address below with the Mac's actual LAN IP:
-
-```bash
-CAPACITOR_DEV_SERVER_URL=http://192.168.1.10:5173 npm run android:sync
-npm run android:open
-```
-
-These development configurations depend on the Mac remaining online. Before release, unset `CAPACITOR_DEV_SERVER_URL` if set, configure the deployed HTTPS backend through `VITE_API_URL`, and sync again. Packaging does not deploy the API or database. Emulator and APK test completion must be recorded separately.
-
-## Milestone scope
-
-The first implementation includes the shop dashboard, inventory, purchases, sales, expenses, customer records, catalog and reviews. Eleven automated checks pass. The Android debug build, installation, activity startup and WebView connection to the Mac development server were verified. Native end-to-end interaction coverage remains limited; see [implementation status](docs/IMPLEMENTATION_STATUS.md).
-
-Remaining course integrations include real email and phone verification, cloud uploads, GraphQL, on-device ML, generative AI, Crystal Reports and the deployment pipeline. Complete supplier, returns and payment-ledger workflows are also separate work. Do not treat sample data or placeholders as completed integrations. See the requirement plan for the detailed mapping.
-
-Official setup references: [Capacitor environment](https://capacitorjs.com/docs/getting-started/environment-setup), [Android Studio](https://developer.android.com/studio), [Node.js](https://nodejs.org/en/download).
+Final validation passed all 58 tests in 7 suites, TypeScript and the Android build. The USB APK was installed and launched on the Huawei P10 (Android 9); the user confirmed the Products screen displayed correctly. A real local Git repository exists. A remote repository and hosted workflow run have not been verified. Local data, credentials, backups and APK outputs are ignored by Git. Preserve `.data` and its backups.
