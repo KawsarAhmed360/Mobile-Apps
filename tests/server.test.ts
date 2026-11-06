@@ -65,6 +65,31 @@ describe('SmartShop persistent API', () => {
     assert.equal(duplicate.status, 409);
   });
 
+  it('places newly added products in category and name order across catalog pages and inventory', async () => {
+    const fruit = 'Order Fixture Fruit';
+    const bakery = 'order Fixture Bakery';
+    const ids = new Map<string, number>();
+    for (const [name, category] of [['Order Fixture Zebra', fruit], ['Order Fixture Mango', bakery], ['Order Fixture Banana', fruit], ['Order Fixture apple', fruit]]) {
+      const created = await request('/api/products', { body: { name, category, unit: 'piece', price: 100, cost: 60, stock: 1, reorderLevel: 0 } });
+      assert.equal(created.status, 201);
+      ids.set(name, created.data.id);
+    }
+    const expected = ['Order Fixture Mango', 'Order Fixture apple', 'Order Fixture Banana', 'Order Fixture Zebra'].map(name => ids.get(name));
+    const first = await request('/api/products?search=Order%20Fixture&limit=2', { auth: false });
+    const second = await request('/api/products?search=Order%20Fixture&limit=2&page=2', { auth: false });
+    assert.equal(first.status, 200);
+    assert.equal(second.status, 200);
+    assert.equal(first.data.pages, 2);
+    assert.deepEqual(first.data.items.map((item: { id: number }) => item.id), expected.slice(0, 2));
+    assert.deepEqual(second.data.items.map((item: { id: number }) => item.id), expected.slice(2));
+    assert.deepEqual(first.data.categories.filter((category: string) => category === fruit || category === bakery), [bakery, fruit]);
+
+    const filtered = await request(`/api/products?category=${encodeURIComponent(fruit)}`, { auth: false });
+    assert.deepEqual(filtered.data.items.map((item: { id: number }) => item.id), expected.slice(1));
+    const inventory = await request('/api/inventory');
+    assert.deepEqual(inventory.data.filter((item: { category: string }) => item.category === fruit || item.category === bakery).map((item: { id: number }) => item.id), expected);
+  });
+
   it('records sale stock, due and profit atomically, and retries only once', async () => {
     const before = (await request('/api/inventory')).data[0];
     const dashboard = (await request('/api/dashboard')).data;

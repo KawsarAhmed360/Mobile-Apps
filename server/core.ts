@@ -294,6 +294,7 @@ export function createApp(options: CoreOptions) {
     ...(privateFields ? { cost: row.cost, stock: row.stock, reorderLevel: row.reorder_level } : {}),
   });
   const productSql = 'SELECT p.*, COALESCE((SELECT AVG(rating) FROM reviews WHERE product_id=p.id),0) rating, (SELECT COUNT(*) FROM reviews WHERE product_id=p.id) review_count FROM products p';
+  const productOrder = 'ORDER BY p.category COLLATE NOCASE, p.category, p.name COLLATE NOCASE, p.id';
   const getProduct = (id: number) => {
     const row = one(`${productSql} WHERE p.id=? AND p.archived_at IS NULL`, id);
     if (!row) throw new ApiError(404, 'Product is unavailable.');
@@ -598,8 +599,8 @@ export function createApp(options: CoreOptions) {
     const escapedSearch = search.replace(/[\\%_]/g, '\\$&');
     const args = [`%${escapedSearch}%`, category, category];
     const total = one(`SELECT COUNT(*) n FROM products p${where}`, ...args)!.n;
-    const items = all(`${productSql}${where} ORDER BY p.id LIMIT ? OFFSET ?`, ...args, limit, (page - 1) * limit).map(row => product(row));
-    res.json({ items, total, page, pages: Math.max(1, Math.ceil(total / limit)), categories: all('SELECT DISTINCT category FROM products WHERE archived_at IS NULL ORDER BY category').map(row => row.category) });
+    const items = all(`${productSql}${where} ${productOrder} LIMIT ? OFFSET ?`, ...args, limit, (page - 1) * limit).map(row => product(row));
+    res.json({ items, total, page, pages: Math.max(1, Math.ceil(total / limit)), categories: all('SELECT DISTINCT category FROM products WHERE archived_at IS NULL ORDER BY category COLLATE NOCASE, category').map(row => row.category) });
   });
   app.get('/api/products/:id', (req, res) => res.json(product(getProduct(z.coerce.number().int().positive().parse(req.params.id)))));
   const getReviews = (productId: number) => all('SELECT r.*,u.name author FROM reviews r JOIN users u ON u.id=r.user_id WHERE product_id=? ORDER BY created_at DESC,id DESC', productId).map(row => ({ id: row.id, productId: row.product_id, userId: row.user_id, author: row.author, rating: row.rating, body: row.body, createdAt: row.created_at }));
@@ -617,7 +618,7 @@ export function createApp(options: CoreOptions) {
     const timer = setInterval(() => res.write(': heartbeat\n\n'), 25_000);
     req.on('close', () => { clearInterval(timer); clients.delete(res); });
   });
-  app.get('/api/inventory', auth, staff, (_req, res) => res.json(all(`${productSql} WHERE p.archived_at IS NULL ORDER BY p.id`).map(row => product(row, true))));
+  app.get('/api/inventory', auth, staff, (_req, res) => res.json(all(`${productSql} WHERE p.archived_at IS NULL ${productOrder}`).map(row => product(row, true))));
   app.get('/api/stock-alerts', auth, staff, (req: AuthRequest, res) => {
     const items = all(`SELECT p.id,p.name,p.stock,p.unit,p.reorder_level,
       CASE WHEN r.stock_at_read=p.stock AND r.reorder_at_read=p.reorder_level THEN 1 ELSE 0 END is_read
