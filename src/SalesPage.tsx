@@ -4,6 +4,7 @@ import type { Customer, InventoryProduct, SaleInput, SaleResult } from '../share
 import { api, ApiError, post } from './api';
 import { asCents, Empty, ErrorNotice, Field, Loading, Modal, money, ProductArt, SubmitButton } from './components';
 import { newRequestId } from './requestId';
+import { PdfDownloadButton } from './PdfDownloadButton';
 
 export function SalesPage({revision,onSuccess}:{revision:number;onSuccess:(message:string)=>void}){
   const [products,setProducts]=useState<InventoryProduct[]>([]),[customers,setCustomers]=useState<Customer[]>([]);
@@ -60,6 +61,14 @@ export function SalesPage({revision,onSuccess}:{revision:number;onSuccess:(messa
       </div>
     </form>
   </div>
-  {receipt&&<Modal title="Sale and payment saved." eyebrow="SALE COMPLETE" onClose={()=>setReceipt(null)}><div className="receipt-success"><CheckCircle2 size={45}/><h3>Sale #{receipt.id}</h3><p>Your stock and customer ledger are up to date.</p></div><div className="receipt-lines"><div><span>New product bill</span><strong>{money(receipt.total)}</strong></div><div><span>Previous dues paid</span><strong>{money(receipt.previousDuePayment??0)}</strong></div><div><span>Paid for this bill</span><strong>{money(receipt.paid)}</strong></div><div><span>Cash received</span><strong>{money(receipt.paid+(receipt.previousDuePayment??0))}</strong></div><div><span>Customer balance</span><strong>{money(receipt.customerBalance??receipt.due)}</strong></div></div><button className="button button-primary button-full" onClick={()=>setReceipt(null)}>Start another sale</button></Modal>}
+  {receipt && <Modal title="Sale and payment saved." eyebrow="SALE COMPLETE" onClose={() => setReceipt(null)}>
+    <div className="receipt-success"><CheckCircle2 size={45}/><h3>Sale #{receipt.id}</h3><p>Your stock and customer ledger are up to date.</p></div>
+    <div className="receipt-lines"><div><span>New product bill</span><strong>{money(receipt.total)}</strong></div><div><span>Previous dues paid</span><strong>{money(receipt.previousDuePayment ?? 0)}</strong></div><div><span>Paid for this bill</span><strong>{money(receipt.paid)}</strong></div><div><span>Cash received</span><strong>{money(receipt.paid + (receipt.previousDuePayment ?? 0))}</strong></div><div><span>Customer balance</span><strong>{money(receipt.customerBalance ?? receipt.due)}</strong></div></div>
+    <div className="form-stack">
+      <PdfDownloadButton path={`/sales/${receipt.id}/invoice`} label="Download sales invoice PDF" className="button button-primary button-full" />
+      {!!receipt.customerId && !!receipt.previousDueReceiptId && <PdfDownloadButton path={`/customers/${receipt.customerId}/payments/${receipt.previousDueReceiptId}/invoice`} label="Download previous balance receipt" className="button button-outline button-full" />}
+      <button type="button" className="button button-outline button-full" onClick={() => setReceipt(null)}>Start another sale</button>
+    </div>
+  </Modal>}
   <style>{`.customer-checkout-info{background:#f3f7ef;border-radius:10px;padding:12px;display:grid;gap:5px;font-size:13px;color:#53664f}.customer-checkout-info strong{color:#234a36}.payment-split{display:grid;gap:8px;padding:12px;background:#f7f9f2;border-radius:10px;font-size:12px}.payment-split>div{display:flex;justify-content:space-between;gap:12px;color:#52694a}.payment-split strong{white-space:nowrap}`}</style></>;
 }

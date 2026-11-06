@@ -91,6 +91,26 @@ describe('Photo upload storage and permissions', () => {
     assert.equal(Number(fixture.db.prepare('SELECT COUNT(*) total FROM uploads').get()!.total), 0);
   });
 
+  it('uses the owner-selected shop logo on document downloads', async () => {
+    process.env.STORAGE_PROVIDER = 'local';
+    assert.equal((await upload(customer, png, 'image/png', 'shop-logo')).status, 403);
+    const logo = await upload(owner, png, 'image/png', 'shop-logo');
+    const product = await upload(owner, png);
+    assert.equal(logo.status, 201);
+    const setLogo = (token: string, uploadId: number | null) => fetch(`${base}/api/shop/logo`, {
+      method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ uploadId }),
+    });
+    assert.equal((await setLogo(customer, logo.body.id)).status, 403);
+    assert.equal((await setLogo(owner, product.body.id)).status, 400);
+    assert.equal((await setLogo(owner, logo.body.id)).status, 200);
+    const doc = await fetch(`${base}/api/sales/1/invoice`, { headers: { Authorization: `Bearer ${owner}` } });
+    assert.equal(doc.status, 200);
+    assert.equal((await doc.json()).shop.logoUrl, logo.body.url);
+    assert.equal((await setLogo(owner, null)).status, 200);
+    const shop = await fetch(`${base}/api/shop`);
+    assert.equal((await shop.json()).logoUrl, null);
+  });
+
   it('stores an owner photo separately from product images only after the provider confirms it', async () => {
     process.env.STORAGE_PROVIDER = 'cloudinary';
     process.env.CLOUDINARY_CLOUD_NAME = 'smartshop-test';

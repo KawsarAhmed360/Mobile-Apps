@@ -7,12 +7,13 @@ export interface Product {
   description: string; emoji: string; inStock: boolean; averageRating: number; reviewCount: number;
   imageUrl?: string | null; uploadId?: number | null;
 }
-export interface InventoryProduct extends Product { stock: number; cost: number; reorderLevel: number }
+export interface InventoryProduct extends Product { stock: number; cost: number; reorderLevel: number; supplier?: string; reference?: string }
 export interface ProductPage { items: Product[]; total: number; page: number; pages: number; categories: string[] }
 export interface Review { id: number; productId: number; userId: number; author: string; rating: number; body: string; createdAt: string }
 export interface Shop {
   name: string; tagline: string; phone: string; email: string; address: string;
   openingHours: string; latitude: number | null; longitude: number | null; currency: string; demo: boolean;
+  logoUrl?: string | null;
 }
 export interface Dashboard {
   sales: number; grossProfit: number; expenses: number; netProfit: number;
@@ -28,4 +29,4 @@ export interface SaleInput {
   items: { productId: number; quantity: number }[];
   customerId?: number; customerName?: string; paid: number; previousDuePayment?: number; requestId: string;
 }
-export interface SaleResult { id: number; total: number; paid: number; due: number; previousDue?: number; previousDuePayment?: number; customerBalance?: number }
+export interface SaleResult { id: number; total: number; paid: number; due: number; previousDue?: number; previousDuePayment?: number; customerBalance?: number; customerId?: number | null; previousDueReceiptId?: number | null }

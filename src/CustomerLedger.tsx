@@ -1,17 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { ArrowDownLeft, CheckCircle2, CreditCard, Mail, MapPin, Pencil, Phone, Plus, ReceiptText, Search, UserRound, Users, Wallet } from 'lucide-react';
+import type { CustomerLedger } from '../shared/ledger';
 import type { Customer } from '../shared/types';
 import { mediaUrl, ApiError, api, post } from './api';
 import { asCents, dayLabel, Empty, ErrorNotice, Field, Loading, Modal, money, SubmitButton } from './components';
 import { newRequestId } from './requestId';
+import { PdfDownloadButton } from './PdfDownloadButton';
 import './management.css';
 
-type LedgerCustomer = Customer & { openingDue?: number; openingSettled?: number };
-interface Ledger {
-  customer: LedgerCustomer;
-  sales: { id: number; total: number; paid: number; settled: number; due: number; createdAt: string }[];
-  payments: { id: number; amount: number; method: string; note: string; date: string; createdAt: string }[];
-}
 type Method = 'cash' | 'bkash' | 'nagad' | 'bank' | 'other';
 interface PaymentInput { amount: number; method: Method; note: string; date: string; requestId: string }
 const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dhaka', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
@@ -56,14 +52,14 @@ function CustomerForm({ customer, onClose, onSaved }: { customer: Customer | nul
 }
 
 function CustomerLedgerDialog({ customer, revision, onClose, onChanged, onSuccess }: { customer: Customer; revision: number; onClose: () => void; onChanged: () => void; onSuccess: (message: string) => void }) {
-  const [data, setData] = useState<Ledger | null>(null), [loading, setLoading] = useState(true), [error, setError] = useState('');
+  const [data, setData] = useState<CustomerLedger | null>(null), [loading, setLoading] = useState(true), [error, setError] = useState('');
   const [refresh, setRefresh] = useState(0), [busy, setBusy] = useState(false), [locked, setLocked] = useState(false);
   const [amount, setAmount] = useState(''), [method, setMethod] = useState<Method>('cash'), [note, setNote] = useState(''), [date, setDate] = useState(today);
-  const [paymentError, setPaymentError] = useState(''), [receipt, setReceipt] = useState<{ amount: number; remainingDue: number } | null>(null);
+  const [paymentError, setPaymentError] = useState(''), [receipt, setReceipt] = useState<{ id: number; amount: number; remainingDue: number } | null>(null);
   const pending = useRef<PaymentInput | null>(null);
   useEffect(() => {
     let cancelled = false; setLoading(true); setError('');
-    api<Ledger>(`/customers/${customer.id}/ledger`).then(result => { if (!cancelled) setData(result); }).catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : 'Could not load the customer ledger.'); }).finally(() => { if (!cancelled) setLoading(false); });
+    api<CustomerLedger>(`/customers/${customer.id}/ledger`).then(result => { if (!cancelled) setData(result); }).catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : 'Could not load the customer ledger.'); }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [customer.id, revision, refresh]);
   const receive = async (event: FormEvent) => {
@@ -79,10 +75,42 @@ function CustomerLedgerDialog({ customer, revision, onClose, onChanged, onSucces
     } finally { setBusy(false); }
   };
   const current = data?.customer ?? customer;
-  return <Modal title={`${current.name}’s account`} eyebrow="CUSTOMER LEDGER" onClose={onClose} wide><div className="ledger-customer-contact">{current.phone && <span><Phone size={14} />{current.phone}</span>}{current.address && <span><MapPin size={14} />{current.address}</span>}</div><div className="customer-ledger-balance"><div><span>Current balance due</span><strong>{money(current.due)}</strong></div><Wallet size={29} /></div><ErrorNotice>{error}</ErrorNotice>{loading && !data ? <Loading label="Loading purchases and payments…" /> : data && <>
+  const paymentInvoice = (id: number) => `/customers/${customer.id}/payments/${id}/invoice`;
+  return <Modal title={`${current.name}’s account`} eyebrow="CUSTOMER LEDGER" onClose={onClose} wide><div className="ledger-customer-contact">{current.phone && <span><Phone size={14} />{current.phone}</span>}{current.email && <span><Mail size={14} />{current.email}</span>}{current.address && <span><MapPin size={14} />{current.address}</span>}</div><div className="customer-ledger-balance"><div><span>Current balance due</span><strong>{money(current.due)}</strong></div><Wallet size={29} /></div><ErrorNotice>{error}</ErrorNotice>{loading && !data ? <Loading label="Loading purchases and payments…" /> : data && <>
     {(data.customer.openingDue ?? 0) > 0 && <div className="opening-balance-note"><strong>Opening balance</strong><span>Brought forward: {money(data.customer.openingDue ?? 0)}</span><span>Collected: {money(data.customer.openingSettled ?? 0)}</span></div>}
-    <section className="ledger-payment-section"><div className="management-section-heading compact"><span><ArrowDownLeft size={19} /></span><div><h3>Receive a payment</h3><p>Collect money against this customer’s outstanding balance.</p></div></div>{current.due > 0 || locked ? <form className="form-stack" onSubmit={receive}><div className="form-grid"><Field label="Amount received (৳)"><input type="number" min="0.01" max={current.due / 100} step="0.01" value={amount} onChange={event => setAmount(event.target.value)} required disabled={locked} placeholder="0.00" /></Field><Field label="Payment method"><select value={method} onChange={event => setMethod(event.target.value as Method)} disabled={locked}>{methods.map(item => <option value={item.value} key={item.value}>{item.label}</option>)}</select></Field><Field label="Payment date"><input type="date" value={date} onChange={event => setDate(event.target.value)} required disabled={locked} /></Field><Field label="Note / reference"><input value={note} onChange={event => setNote(event.target.value)} maxLength={300} disabled={locked} placeholder="Optional reference" /></Field></div><ErrorNotice>{paymentError}</ErrorNotice>{locked && paymentError && <p className="management-hint">Retry sends the same payment safely. Check payment history before recording a replacement.</p>}<SubmitButton busy={busy} disabled={!locked && (!Number.isFinite(Number(amount)) || asCents(amount) <= 0 || asCents(amount) > current.due)}><CreditCard size={17} />{locked ? 'Retry this payment' : 'Record payment'}</SubmitButton></form> : <p className="management-success"><CheckCircle2 size={17} />This customer has no outstanding balance.</p>}{receipt && <div className="ledger-payment-receipt" role="status"><CheckCircle2 size={20} /><div><strong>{money(receipt.amount)} received</strong><span>Remaining balance due: {money(receipt.remainingDue)}</span></div></div>}</section>
-    <section className="ledger-history-section"><h3><ReceiptText size={18} />Purchase history</h3>{!data.sales.length ? <p className="management-hint">No sales have been recorded for this customer.</p> : <div className="table-scroll"><table className="ledger-sales-table"><thead><tr><th>Bill</th><th>Date</th><th>Total</th><th>Paid at sale</th><th>Received total</th><th>Still due</th></tr></thead><tbody>{data.sales.map(sale => <tr key={sale.id}><td>#{sale.id}</td><td>{dayLabel(sale.createdAt)}</td><td>{money(sale.total)}</td><td>{money(sale.paid)}</td><td>{money(sale.settled)}</td><td className={sale.due > 0 ? 'amount-due' : ''}>{money(sale.due)}</td></tr>)}</tbody></table></div>}</section>
-    <section className="ledger-history-section"><h3><ArrowDownLeft size={18} />Payment history</h3>{!data.payments.length ? <p className="management-hint">Payments collected against earlier dues will appear here.</p> : <div className="ledger-payment-list">{data.payments.map(payment => <article key={payment.id}><span><CreditCard size={19} /></span><div><strong>{methods.find(item => item.value === payment.method)?.label || payment.method} payment</strong><p>{dayLabel(payment.date || payment.createdAt)}{payment.note && ` · ${payment.note}`}</p></div><strong>{money(payment.amount)}</strong></article>)}</div>}</section>
+    <section className="ledger-payment-section"><div className="management-section-heading compact"><span><ArrowDownLeft size={19} /></span><div><h3>Receive a payment</h3><p>Collect money against this customer’s outstanding balance.</p></div></div>{current.due > 0 || locked ? <form className="form-stack" onSubmit={receive}><div className="form-grid"><Field label="Amount received (৳)"><input type="number" min="0.01" max={current.due / 100} step="0.01" value={amount} onChange={event => setAmount(event.target.value)} required disabled={locked} placeholder="0.00" /></Field><Field label="Payment method"><select value={method} onChange={event => setMethod(event.target.value as Method)} disabled={locked}>{methods.map(item => <option value={item.value} key={item.value}>{item.label}</option>)}</select></Field><Field label="Payment date"><input type="date" value={date} onChange={event => setDate(event.target.value)} required disabled={locked} /></Field><Field label="Note / reference"><input value={note} onChange={event => setNote(event.target.value)} maxLength={300} disabled={locked} placeholder="Optional reference" /></Field></div><ErrorNotice>{paymentError}</ErrorNotice>{locked && paymentError && <p className="management-hint">Retry sends the same payment safely. Check payment history before recording a replacement.</p>}<SubmitButton busy={busy} disabled={!locked && (!Number.isFinite(Number(amount)) || asCents(amount) <= 0 || asCents(amount) > current.due)}><CreditCard size={17} />{locked ? 'Retry this payment' : 'Record payment'}</SubmitButton></form> : <p className="management-success"><CheckCircle2 size={17} />This customer has no outstanding balance.</p>}
+      {receipt && <div className="ledger-payment-receipt">
+        <CheckCircle2 size={20} />
+        <div role="status"><strong>{money(receipt.amount)} received</strong><span>Remaining balance due: {money(receipt.remainingDue)}</span></div>
+        <PdfDownloadButton path={paymentInvoice(receipt.id)} label="Payment invoice PDF" />
+      </div>}
+    </section>
+    <section className="ledger-history-section">
+      <div className="ledger-history-heading">
+        <h3><ReceiptText size={18} />Purchase history</h3>
+        <PdfDownloadButton path={`/customers/${customer.id}/ledger/document`} label="Download history PDF" />
+      </div>
+      {!data.sales.length ? <p className="management-hint">No sales have been recorded for this customer.</p> :
+        <div className="table-scroll"><table className="ledger-sales-table">
+          <thead><tr><th>Bill</th><th>Date</th><th>Products &amp; quantities</th><th>Total</th><th>Paid at sale</th><th>Received total</th><th>Still due</th><th>Invoice</th></tr></thead>
+          <tbody>{data.sales.map(sale => <tr key={sale.id}>
+            <td>#{sale.id}</td><td>{sale.date || dayLabel(sale.createdAt)}</td>
+            <td className="ledger-product-lines">{sale.items?.length ? <ul>{sale.items.map(item => <li key={item.productId}>{item.name} <span>× {item.quantity} {item.unit}</span></li>)}</ul> : '—'}</td>
+            <td>{money(sale.total)}</td><td>{money(sale.paid)}</td><td>{money(sale.settled)}</td>
+            <td className={sale.due > 0 ? 'amount-due' : ''}>{money(sale.due)}</td>
+            <td><PdfDownloadButton path={`/sales/${sale.id}/invoice`} label={`Bill #${sale.id} PDF`} className="button button-outline button-small" /></td>
+          </tr>)}</tbody>
+        </table></div>}
+    </section>
+    <section className="ledger-history-section">
+      <h3><ArrowDownLeft size={18} />Payment history</h3>
+      {!data.payments.length ? <p className="management-hint">Payments collected against earlier dues will appear here.</p> :
+        <div className="ledger-payment-list">{data.payments.map(payment => <article key={payment.id}>
+          <span><CreditCard size={19} /></span>
+          <div><strong>{methods.find(item => item.value === payment.method)?.label || payment.method} payment · #{payment.id}</strong><p>{payment.date || dayLabel(payment.createdAt)}{payment.note && ` · ${payment.note}`}</p></div>
+          <strong>{money(payment.amount)}</strong>
+          <PdfDownloadButton path={paymentInvoice(payment.id)} label={`Receipt #${payment.id} PDF`} className="button button-outline button-small" />
+        </article>)}</div>}
+    </section>
     </>}</Modal>;
 }

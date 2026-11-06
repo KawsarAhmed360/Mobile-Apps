@@ -21,6 +21,11 @@
   background: #eef5e7;
 }
 
+.auth-forgot-password {
+  align-self: flex-end;
+  min-height: 44px;
+}
+
 .signup-verification {
   display: grid;
   gap: 16px;

@@ -101,7 +101,7 @@ export interface CloudImage {
   provider: StorageProvider;
 }
 
-export type PublicImagePurpose = 'product' | 'owner-avatar' | 'profile-avatar';
+export type PublicImagePurpose = 'product' | 'owner-avatar' | 'profile-avatar' | 'shop-logo';
 type PublicImageInput = { buffer: Buffer; mimeType: 'image/jpeg' | 'image/png' | 'image/webp'; userId: number; name: string; purpose: PublicImagePurpose };
 
 const opaqueImageId = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
@@ -120,7 +120,7 @@ export function readLocalImage(id: string, storagePath: string): Buffer {
   finally { if (descriptor !== undefined) closeSync(descriptor); }
 }
 
-/** Public product images and the profile photo a user chooses for their account. */
+/** Public product images, profile photos and shop logos. */
 export async function uploadPublicImage(input: PublicImageInput): Promise<CloudImage> {
   const config = getServiceConfig().storage;
   if (!config.configured || !config.provider) throw new ServiceError(503, 'Photo storage is not configured for this shop yet.');
@@ -134,7 +134,7 @@ export async function uploadPublicImage(input: PublicImageInput): Promise<CloudI
       return { url: `/api/media/${id}`, storagePath, provider: 'local' };
     } catch { throw new ServiceError(503, 'The shop server could not save this photo. Check its available storage and try again.'); }
   }
-  const folder = input.purpose === 'owner-avatar' ? 'owner-avatars' : input.purpose === 'profile-avatar' ? 'profile-images' : 'products';
+  const folder = { product: 'products', 'owner-avatar': 'owner-avatars', 'profile-avatar': 'profile-images', 'shop-logo': 'shop-logos' }[input.purpose];
   const imageId = `smartshop/${folder}/${input.userId}/${randomUUID()}`;
   if (config.provider === 'firebase') {
     const storagePath = `${imageId}.${extension}`;

@@ -27,7 +27,10 @@ export function createApp(input: Options | string = {}) {
   const db = new DatabaseSync(dbPath);
   db.exec('PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;');
   const result = createCoreApp({ ...options, db, secret: options.secret ?? secretFile('session-secret', 48), ownerSetupCode: options.ownerSetupCode ?? process.env.OWNER_SETUP_CODE ?? secretFile('owner-setup-code', 8).toUpperCase() });
-  result.app.get('/downloads/latest.apk', (_req, res) => {
+  const oldPhoneLinks = ['/downloads/apk', '/downloads/smartshop.apk'];
+  const latestLinks = ['/downloads/latest.apk', ...(options.latestApk ? oldPhoneLinks : [])];
+  const manualLinks = ['/downloads/phone', ...(options.latestApk ? [] : oldPhoneLinks)];
+  result.app.get(latestLinks, (_req, res) => {
     res.set('Cache-Control', 'no-store');
     const apk = options.latestApk?.();
     if (!apk || !existsSync(apk)) {
@@ -37,7 +40,7 @@ export function createApp(input: Options | string = {}) {
     res.type('application/vnd.android.package-archive');
     res.download(apk, 'SmartShop-Latest.apk', { cacheControl: false });
   });
-  result.app.get(['/downloads/apk', '/downloads/smartshop.apk'], (_req, res) => {
+  result.app.get(manualLinks, (_req, res) => {
     const apk = resolve('output/SmartShop-Phone.apk');
     if (!existsSync(apk)) { res.status(404).json({ error: 'The phone APK has not been built yet.' }); return; }
     res.download(apk, 'SmartShop-Phone.apk');

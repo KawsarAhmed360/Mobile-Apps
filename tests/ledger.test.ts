@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import { createApp, dhakaDate } from '../server/app.js';
+import { documentMoney } from '../shared/document.js';
 
 describe('Shop settings, customer ledgers and stock alerts', () => {
   let directory: string;
@@ -120,6 +121,39 @@ describe('Shop settings, customer ledgers and stock alerts', () => {
     assert.equal(secondRow.settled, 1200);
     assert.equal(secondRow.due, 14300);
     assert.equal(ledger.customer.due, 14300);
+  });
+
+  it('includes sale lines in customer history and preserves the balance on old payment invoices', async () => {
+    const customer = await buyer(2000);
+    const path = `/customers/${customer.id}`;
+    await request(path, { email: 'buyer@example.com', address: 'Mirpur, Dhaka' }, 'PATCH');
+    const bill = (await request('/sales', { items: [{ productId: 1, quantity: 2 }], customerId: customer.id, paid: 1000, requestId: 'printable-ledger-sale' })).data;
+    const partial = (await request(`${path}/payments`, { amount: 3000, method: 'bkash', note: 'First instalment', date: '2026-02-03', requestId: 'printable-first-payment' })).data;
+    const final = (await request(`${path}/payments`, { amount: 13600, method: 'cash', requestId: 'printable-final-payment' })).data;
+    await request('/products/1', { name: 'Renamed rice', unit: 'bag' }, 'PATCH');
+    const history = (await request(`${path}/ledger`)).data;
+    assert.equal(history.sales[0].date, dhakaDate());
+    assert.equal(history.sales[0].settled, 15600);
+    assert.equal(history.sales[0].due, 0);
+    assert.deepEqual(history.sales[0].items, [{ productId: 1, name: 'Miniket Rice', unit: 'kg', quantity: 2, unitPrice: 7800, total: 15600 }]);
+
+    const statement = await request(`${path}/ledger/document`);
+    assert.equal(statement.status, 200);
+    assert.deepEqual(statement.data.sections[0].columns, ['Bill', 'Date', 'Total', 'Paid at sale', 'Received total', 'Still due']);
+    assert.deepEqual(statement.data.sections[1].rows[0].slice(0, 3), [`#${bill.id}`, 'Miniket Rice', '2 kg']);
+
+    const partialPath = `${path}/payments/${partial.id}/invoice`;
+    const originalReceipt = (await request(partialPath)).data;
+    assert.equal(originalReceipt.status, 'DUE');
+    assert.ok(originalReceipt.details.some((field: { label: string; value: string }) => field.label === 'Customer email' && field.value === 'buyer@example.com'));
+    assert.deepEqual(originalReceipt.sections[0].rows[0], ['Opening balance', '-', documentMoney(2000), documentMoney(2000), '-']);
+    assert.deepEqual(originalReceipt.sections[0].rows[1].slice(3), [documentMoney(1000), documentMoney(13600)]);
+    assert.deepEqual(originalReceipt.totals.at(-1), { label: 'Balance after this payment', value: documentMoney(13600) });
+    fixture.db.prepare('UPDATE customer_receipts SET remaining_due=NULL WHERE id=?').run(partial.id);
+    assert.deepEqual((await request(partialPath)).data, originalReceipt);
+    assert.equal((await request(`${path}/payments/${final.id}/invoice`)).data.status, 'PAID');
+    assert.equal((await request(partialPath, undefined, 'GET', customerToken)).status, 403);
+    assert.equal((await request(`/customers/${(await buyer()).id}/payments/${partial.id}/invoice`)).status, 404);
   });
 
   it('atomically collects prior dues at checkout while treating only the new bill as new sales', async () => {

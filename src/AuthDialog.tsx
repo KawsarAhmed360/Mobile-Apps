@@ -17,6 +17,7 @@ import {
   type VerificationConfig,
 } from './firebase';
 import { PasswordField } from './PasswordField';
+import { PasswordResetForm } from './PasswordResetForm';
 
 type Step = 'details' | 'email' | 'phone' | 'finish';
 type Contacts = { emailVerified: boolean; phone: string | null };
@@ -45,6 +46,7 @@ function useResendTimer() {
 
 export function AuthDialog({ onClose, onLogin }: { onClose: () => void; onLogin: (result: AuthResponse) => void }) {
   const [register, setRegister] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [owner, setOwner] = useState(false);
   const [config, setConfig] = useState<VerificationConfig | null>(null);
   const [configError, setConfigError] = useState(false);
@@ -361,6 +363,15 @@ export function AuthDialog({ onClose, onLogin }: { onClose: () => void; onLogin:
   const locked = !!busy;
   const linkedOtherNumber = linkedPhone && linkedPhone !== phoneNumber;
 
+  if (resetting) return <Modal title="Reset your password" eyebrow="YOUR SMARTSHOP ACCOUNT" onClose={onClose}>
+    <PasswordResetForm initialEmail={emailAddress} onBack={() => setResetting(false)} onReset={address => {
+      setEmail(address);
+      setPassword('');
+      setResetting(false);
+      setNotice('Password reset. Sign in with your new password.');
+    }} />
+  </Modal>;
+
   return <Modal title={register ? (owner ? 'Set up your shop owner' : 'Create your account') : 'Welcome back'} eyebrow="YOUR SMARTSHOP ACCOUNT" onClose={onClose}>
     {!register && <p className="modal-intro">Sign in to your SmartShop account.</p>}
     {register && emailRequired && <ol className="signup-progress" aria-label="Signup steps">
@@ -404,6 +415,12 @@ export function AuthDialog({ onClose, onLogin }: { onClose: () => void; onLogin:
         placeholder={register ? `At least ${owner ? 10 : 8} characters` : 'Your password'}
         disabled={locked}
       />
+      {!register && <button type="button" className="text-button auth-forgot-password" disabled={locked} onClick={() => {
+        setError('');
+        setNotice('');
+        setPassword('');
+        setResetting(true);
+      }}>Forgot password?</button>}
       {register && config && !emailRequired && <div className="notice notice-info">Email verification is unavailable on this server. This signup creates a local account.</div>}
       {register && emailRequired && !phoneRequired && <div className="notice notice-info">SMS verification is currently unavailable. You can sign up by verifying your email.</div>}
       {register && configError && <div className="signup-actions">
@@ -411,6 +428,7 @@ export function AuthDialog({ onClose, onLogin }: { onClose: () => void; onLogin:
         <button type="button" className="button button-outline" onClick={() => { setConfigError(false); setConfigRetry(value => value + 1); }}>Retry</button>
       </div>}
       <ErrorNotice>{error}</ErrorNotice>
+      {!register && notice && <div className="signup-status" role="status"><CheckCircle2 size={17} /><span>{notice}</span></div>}
       <SubmitButton busy={locked} disabled={register && (!config || checking || available === false)}>
         {!register ? 'Sign in' : emailRequired ? 'Send verification email' : 'Create account'}<ArrowRight size={17} />
       </SubmitButton>

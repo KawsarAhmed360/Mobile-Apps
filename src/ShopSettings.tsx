@@ -24,6 +24,10 @@ export function ShopSettings({ onUserUpdate, onSaved }: { onUserUpdate: (user: U
   const [avatarSaving, setAvatarSaving] = useState(false);
   const [avatarUpload, setAvatarUpload] = useState<CloudUpload | null>(null);
   const [shopBusy, setShopBusy] = useState(false);
+  const [logoUpload, setLogoUpload] = useState<CloudUpload | null>(null);
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [logoBusy, setLogoBusy] = useState(false);
+  const [logoError, setLogoError] = useState('');
   const [retry, setRetry] = useState(0);
   const ownerLocked = ownerBusy || avatarUploading || avatarSaving;
   useEffect(() => {
@@ -72,6 +76,18 @@ export function ShopSettings({ onUserUpdate, onSaved }: { onUserUpdate: (user: U
     } catch (err) { setShopError(err instanceof Error ? err.message : 'Could not save shop details.'); }
     finally { setShopBusy(false); }
   };
+  const saveLogo = async (uploadId: number | null) => {
+    if (logoBusy || logoUploading) return;
+    setLogoBusy(true);
+    setLogoError('');
+    try {
+      const updated = await api<Shop>('/shop/logo', { method: 'PATCH', body: JSON.stringify({ uploadId }) });
+      setSettings(current => current ? { ...current, shop: updated } : current);
+      setLogoUpload(null);
+      onSaved();
+    } catch (err) { setLogoError(err instanceof Error ? err.message : 'Could not save the shop logo.'); }
+    finally { setLogoBusy(false); }
+  };
   if (loading) return <Loading label="Loading your shop settings…" />;
   if (loadError || !settings) return <section className="panel management-panel"><ErrorNotice>{loadError || 'Shop settings could not be loaded.'}</ErrorNotice><button className="button button-outline" onClick={() => setRetry(value => value + 1)}>Try again</button></section>;
   return <div className="shop-settings-layout">
@@ -97,7 +113,13 @@ export function ShopSettings({ onUserUpdate, onSaved }: { onUserUpdate: (user: U
       <div className="form-grid"><Field label="Latitude"><input type="number" min="-90" max="90" step="any" value={shop.latitude} onChange={event => changeShop('latitude', event.target.value)} disabled={shopBusy} placeholder="e.g. 23.8103" /></Field><Field label="Longitude"><input type="number" min="-180" max="180" step="any" value={shop.longitude} onChange={event => changeShop('longitude', event.target.value)} disabled={shopBusy} placeholder="e.g. 90.4125" /></Field></div>
       <ErrorNotice>{shopError}</ErrorNotice>{shopSaved && <p className="management-success" role="status"><CheckCircle2 size={17} />Shop details saved. Your customer profile has been updated.</p>}
       <div className="management-form-end"><SubmitButton busy={shopBusy}><Save size={17} />Save shop details</SubmitButton></div>
-    </form></section>
+    </form>
+    <div className="form-stack shop-logo-settings">
+      <div className="owner-photo-preview"><span>{settings.shop.logoUrl ? <img src={mediaUrl(settings.shop.logoUrl)} alt="Current shop logo" /> : <Store size={30} />}</span><div><strong>Invoice logo</strong><p>This logo appears on shop invoices, receipts and reports.</p>{settings.shop.logoUrl && <button type="button" className="text-button" disabled={logoUploading || logoBusy} onClick={() => void saveLogo(null)}>Remove shop logo</button>}</div></div>
+      <CloudUploadField purpose="shop-logo" value={logoUpload} onChange={setLogoUpload} onBusyChange={setLogoUploading} disabled={logoBusy} />
+      {logoUpload && <button type="button" className="button button-outline" disabled={logoBusy || logoUploading} onClick={() => void saveLogo(logoUpload.id)}><Save size={17} />{logoBusy ? 'Saving logo…' : 'Save shop logo'}</button>}
+      <ErrorNotice>{logoError}</ErrorNotice>
+    </div></section>
   </div>;
 }
 

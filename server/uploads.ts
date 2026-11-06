@@ -29,7 +29,7 @@ const createUploadsTable = (name: 'uploads' | 'uploads_next') => `CREATE TABLE $
     mime_type TEXT NOT NULL,
     size INTEGER NOT NULL CHECK(size>0),
     provider TEXT NOT NULL CHECK(provider IN ('local','firebase','cloudinary')),
-    purpose TEXT NOT NULL DEFAULT 'product' CHECK(purpose IN ('product','owner-avatar','profile-avatar')),
+    purpose TEXT NOT NULL DEFAULT 'product' CHECK(purpose IN ('product','owner-avatar','profile-avatar','shop-logo')),
     created_at TEXT NOT NULL
   );`;
 
@@ -37,7 +37,7 @@ const createUploadsTable = (name: 'uploads' | 'uploads_next') => `CREATE TABLE $
 function ensureUploadSchema(db: SyncDatabase) {
   const existing = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='uploads'").get();
   if (!existing) { db.exec(createUploadsTable('uploads')); return; }
-  if (String(existing.sql).includes("'local'") && String(existing.sql).includes("'profile-avatar'")) return;
+  if (String(existing.sql).includes("'local'") && String(existing.sql).includes("'shop-logo'")) return;
   const hasPurpose = db.prepare('PRAGMA table_info(uploads)').all().some(column => column.name === 'purpose');
   const indexesAndTriggers = db.prepare("SELECT sql FROM sqlite_master WHERE tbl_name='uploads' AND type IN ('index','trigger') AND sql IS NOT NULL").all();
   const previousProblems = new Set(db.prepare('PRAGMA foreign_key_check').all().map(row => JSON.stringify(row)));
@@ -98,11 +98,12 @@ export function mountUploads(app: Express, { db, auth }: UploadContext): void {
 
   app.post('/api/uploads', auth, parse, async (req: UploadRequest, res: Response, next: NextFunction) => {
     try {
-      const purpose = z.enum(['product', 'owner-avatar', 'profile-avatar']).default('product').parse(req.body?.purpose);
+      const purpose = z.enum(['product', 'owner-avatar', 'profile-avatar', 'shop-logo']).default('product').parse(req.body?.purpose);
       if (purpose === 'product' && req.user!.role !== 'owner' && req.user!.role !== 'staff') throw new ServiceError(403, 'Only shop staff can upload product photos.');
       if (purpose === 'owner-avatar' && req.user!.role !== 'owner') throw new ServiceError(403, 'Only the shop owner can upload an owner profile photo.');
+      if (purpose === 'shop-logo' && req.user!.role !== 'owner') throw new ServiceError(403, 'Only the shop owner can upload a shop logo.');
       const file = req.file;
-      if (!file || file.size === 0) throw new ServiceError(400, purpose === 'product' ? 'Choose a product image first.' : 'Choose a profile photo first.');
+      if (!file || file.size === 0) throw new ServiceError(400, 'Choose an image first.');
       const mimeType = detectImageMime(file.buffer);
       if (!mimeType) throw new ServiceError(400, 'Upload a JPEG, PNG or WebP image. SVG, HTML and document files are not accepted.');
       const declared = file.mimetype.toLowerCase();
@@ -114,7 +115,7 @@ export function mountUploads(app: Express, { db, auth }: UploadContext): void {
       res.status(201).json({ id: Number(result.lastInsertRowid), url: stored.url, name, mimeType, size: file.size, storage: stored.provider, purpose });
     } catch (error) {
       if (error instanceof ServiceError) { res.status(error.status).json({ error: error.message }); return; }
-      if (error instanceof z.ZodError) { res.status(400).json({ error: 'Only product images and profile photos are supported. Private receipts and documents use a separate restricted workflow.' }); return; }
+      if (error instanceof z.ZodError) { res.status(400).json({ error: 'Only product images, profile photos and shop logos are supported.' }); return; }
       next(error);
     }
   });

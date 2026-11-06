@@ -32,6 +32,8 @@ export function ProductFormDialog({ product, onClose, onSuccess }: ProductDialog
       cost: asCents(String(form.get('cost'))),
       stock: Number(form.get('stock')),
       reorderLevel: Number(form.get('reorderLevel')),
+      supplier: String(form.get('supplier')).trim(),
+      reference: String(form.get('reference')).trim(),
       description: String(form.get('description')).trim(),
       emoji,
     };
@@ -84,6 +86,12 @@ export function ProductFormDialog({ product, onClose, onSuccess }: ProductDialog
         </Field>
         <Field label="Low stock alert at" hint="Alert when stock is at or below this level.">
           <input name="reorderLevel" type="number" min="0" max="100000" step="1" required defaultValue={product?.reorderLevel ?? 5} />
+        </Field>
+        <Field label="Supplier">
+          <input name="supplier" defaultValue={product?.supplier} maxLength={120} placeholder="Supplier name (optional)" />
+        </Field>
+        <Field label="Reference">
+          <input name="reference" defaultValue={product?.reference} maxLength={120} placeholder="Invoice number or reference (optional)" />
         </Field>
       </div>
       <Field label="Description">

@@ -111,6 +111,29 @@ describe('SmartShop persistent API', () => {
     assert.equal((await request('/api/sales', { body: { ...body, paid: 0 } })).status, 409);
   });
 
+  it('reprints the original sale details and updates the invoice status after payment', async () => {
+    const { data: customer } = await request('/api/customers', { body: { name: 'Invoice Customer', phone: '01700000000', email: 'invoice@example.com', address: 'Dhaka' } });
+    const product = (await request('/api/inventory')).data.find((item: { stock: number; price: number }) => item.stock >= 2 && item.price > 0);
+    const bill = await request('/api/sales', { body: { customerId: customer.id, items: [{ productId: product.id, quantity: 2 }], paid: product.price, requestId: 'sale-invoice-example' } });
+    assert.equal(bill.status, 201);
+    const invoicePath = `/api/sales/${bill.data.id}/invoice`;
+    assert.equal((await request(invoicePath, { auth: false })).status, 401);
+    const invoice = await request(invoicePath);
+    assert.equal(invoice.status, 200);
+    assert.equal(invoice.data.status, 'DUE');
+    assert.deepEqual(invoice.data.details.map((field: { value: string }) => field.value), ['Invoice Customer', '01700000000', 'invoice@example.com', 'Dhaka']);
+    assert.deepEqual(invoice.data.sections[0].rows[0].slice(0, 2), [product.name, `2 ${product.unit}`]);
+
+    assert.equal((await request(`/api/products/${product.id}`, { method: 'PATCH', body: { name: 'Renamed stock', unit: 'bag' } })).status, 200);
+    assert.equal((await request(`/api/customers/${customer.id}`, { method: 'PATCH', body: { name: 'New customer name' } })).status, 200);
+    assert.equal((await request(`/api/customers/${customer.id}/payments`, { body: { amount: product.price, method: 'cash', requestId: 'settle-sale-invoice' } })).status, 201);
+    const settled = await request(invoicePath);
+    assert.equal(settled.data.status, 'PAID');
+    assert.deepEqual(settled.data.details, invoice.data.details);
+    assert.deepEqual(settled.data.sections, invoice.data.sections);
+    assert.deepEqual(settled.data.totals.at(-1), { label: 'Still due on this bill', value: 'BDT 0.00' });
+  });
+
   it('rejects an oversold line without modifying other lines or financial totals', async () => {
     const inventory = (await request('/api/inventory')).data;
     const dashboard = (await request('/api/dashboard')).data;

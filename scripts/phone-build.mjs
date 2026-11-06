@@ -57,7 +57,7 @@ try {
     rmSync(pendingApk, { force: true });
   }
   if (latest) process.exit(0);
-  const downloadUrl = `${apiUrl}/downloads/${usb ? 'usb' : 'apk'}`;
+  const downloadUrl = `${apiUrl}/downloads/${usb ? 'usb' : 'phone'}`;
   const instructions = usb ? 'Keep the USB cable connected and adb reverse tcp:3001 tcp:3001 active.' : 'Both devices must use the same Wi-Fi for this local address.';
   writeFileSync(join(output, usb ? 'usb-connection.txt' : 'phone-connection.txt'), `SmartShop local class demo\nAPI: ${apiUrl}\nAPK download: ${downloadUrl}\n${instructions}\nKeep the Mac API server running.\n`);
   console.log(`\nPhone APK ready: output/${apkName}\nShop API: ${apiUrl}\nPhone download: ${downloadUrl}\nKeep the Mac server running. ${instructions}\n`);

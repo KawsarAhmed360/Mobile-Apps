@@ -7,11 +7,16 @@ import { mountCommunity } from './community.js';
 import { getServiceConfig, ServiceError, verifyFirebaseIdToken } from './services.js';
 import { mountUploads } from './uploads.js';
 import { verifySignupContact } from './signup-verification.js';
+import { firebasePasswordRecovery, type PasswordRecovery } from './password-recovery.js';
+import { documentMoney, type ShopDocument } from '../shared/document.js';
+import { customerHistoryDocument, customerPaymentDocument } from './ledger-documents.js';
+import { saleLineItems } from './sale-lines.js';
+import { mountReports } from './reports.js';
 
 type Row = Record<string, any>;
 type Role = 'owner' | 'staff' | 'customer';
 type AuthRequest = Request & { user?: { id: number; role: Role; sessionId?: string } };
-export type CoreOptions = { db: SyncDatabase; transaction?: <T>(fn: () => T) => T; seed?: boolean; secret: string; demo?: boolean; ownerSetupCode: string; cloud?: boolean; verifyIdentity?: typeof verifyFirebaseIdToken };
+export type CoreOptions = { db: SyncDatabase; transaction?: <T>(fn: () => T) => T; seed?: boolean; secret: string; demo?: boolean; ownerSetupCode: string; cloud?: boolean; verifyIdentity?: typeof verifyFirebaseIdToken; passwordRecovery?: PasswordRecovery };
 
 class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -32,6 +37,7 @@ const productInput = z.object({
   unit: z.string().trim().min(1).max(30), price: integer, cost: integer,
   stock: z.number().int().min(0).max(100_000), reorderLevel: z.number().int().min(0).max(100_000),
   description: z.string().trim().max(2000).default(''), emoji: productIcon.default('📦'),
+  supplier: z.string().trim().max(120).default(''), reference: z.string().trim().max(120).default(''),
   uploadId: z.number().int().positive().optional(), imageUrl: z.string().max(2048).optional(),
 });
 
@@ -60,6 +66,7 @@ function safeMoney(value: number): number {
 export function createApp(options: CoreOptions) {
   const db = options.db;
   const verifyIdentity = options.verifyIdentity ?? verifyFirebaseIdToken;
+  const passwordRecovery = options.passwordRecovery ?? firebasePasswordRecovery;
   const demo = options.demo ?? true;
   if (options.cloud && (demo || options.secret.length < 32 || options.ownerSetupCode.length < 12 || !options.transaction)) throw new Error('Cloud mode requires private credentials, durable transactions and demo mode disabled.');
   db.exec(`
@@ -159,6 +166,12 @@ export function createApp(options: CoreOptions) {
   addColumn('products', 'image_url', 'TEXT');
   addColumn('products', 'upload_id', 'INTEGER REFERENCES uploads(id)');
   addColumn('products', 'archived_at', 'TEXT');
+  addColumn('products', 'supplier', "TEXT NOT NULL DEFAULT ''");
+  addColumn('products', 'reference', "TEXT NOT NULL DEFAULT ''");
+  addColumn('purchases', 'supplier', "TEXT NOT NULL DEFAULT ''");
+  addColumn('purchases', 'product_name', 'TEXT');
+  addColumn('purchases', 'product_unit', 'TEXT');
+  addColumn('purchases', 'product_category', 'TEXT');
   addColumn('users', 'avatar_url', "TEXT NOT NULL DEFAULT ''");
   addColumn('users', 'avatar_upload_id', 'INTEGER REFERENCES uploads(id)');
   addColumn('users', 'address', "TEXT NOT NULL DEFAULT ''");
@@ -167,8 +180,14 @@ export function createApp(options: CoreOptions) {
   addColumn('shop', 'email', "TEXT NOT NULL DEFAULT 'demo@smartshop.local'");
   addColumn('shop', 'configured', 'INTEGER NOT NULL DEFAULT 0');
   addColumn('shop', 'map_location_set', 'INTEGER NOT NULL DEFAULT 1');
+  addColumn('shop', 'logo_upload_id', 'INTEGER REFERENCES uploads(id)');
+  for (const field of ['name', 'phone', 'email', 'address']) addColumn('sales', `customer_${field}`, 'TEXT');
+  addColumn('sales', 'checkout_receipt_id', 'INTEGER REFERENCES customer_receipts(id)');
+  addColumn('sale_items', 'product_name', 'TEXT');
+  addColumn('sale_items', 'product_unit', 'TEXT');
   addColumn('customers', 'opening_due', 'INTEGER NOT NULL DEFAULT 0 CHECK(opening_due>=0)');
   addColumn('customer_receipts', 'opening_amount', 'INTEGER NOT NULL DEFAULT 0 CHECK(opening_amount>=0)');
+  addColumn('customer_receipts', 'remaining_due', 'INTEGER CHECK(remaining_due>=0)');
   addColumn('user_sessions', 'refresh_token_hash', 'TEXT');
   addColumn('user_sessions', 'previous_refresh_token_hash', 'TEXT');
   addColumn('user_sessions', 'previous_refresh_valid_until', 'TEXT');
@@ -291,7 +310,7 @@ export function createApp(options: CoreOptions) {
     description: row.description, emoji: row.emoji, inStock: row.stock > 0,
     averageRating: Number(row.rating ?? 0), reviewCount: Number(row.review_count ?? 0),
     imageUrl: row.image_url ?? null, uploadId: row.upload_id ?? null,
-    ...(privateFields ? { cost: row.cost, stock: row.stock, reorderLevel: row.reorder_level } : {}),
+    ...(privateFields ? { cost: row.cost, stock: row.stock, reorderLevel: row.reorder_level, supplier: row.supplier, reference: row.reference } : {}),
   });
   const productSql = 'SELECT p.*, COALESCE((SELECT AVG(rating) FROM reviews WHERE product_id=p.id),0) rating, (SELECT COUNT(*) FROM reviews WHERE product_id=p.id) review_count FROM products p';
   const productOrder = 'ORDER BY p.category COLLATE NOCASE, p.category, p.name COLLATE NOCASE, p.id';
@@ -327,6 +346,7 @@ export function createApp(options: CoreOptions) {
   const shopProfile = (row: Row) => ({
     name: row.name, tagline: row.tagline, address: row.address, phone: row.phone,
     email: row.email, openingHours: row.opening_hours,
+    logoUrl: row.logo_upload_id ? one('SELECT url FROM uploads WHERE id=?', row.logo_upload_id)?.url ?? null : null,
     latitude: row.map_location_set ? row.latitude : null, longitude: row.map_location_set ? row.longitude : null,
     currency: 'BDT', demo: !row.configured,
   });
@@ -346,12 +366,30 @@ export function createApp(options: CoreOptions) {
     if (!customer) throw new ApiError(404, 'Customer not found.');
     return customer;
   };
+  const ledgerSale = (row: Row, items: ReturnType<typeof saleLineItems>) => ({
+    id: row.id, total: row.total, paid: row.paid, settled: row.paid + row.allocated,
+    due: row.total - row.paid - row.allocated, date: row.business_date, createdAt: row.created_at,
+    items: items.get(row.id) ?? [],
+  });
+  const ledgerPayment = (row: Row) => ({
+    id: row.id, amount: row.amount, openingAmount: row.opening_amount, method: row.method,
+    note: row.note, date: row.business_date, createdAt: row.created_at,
+  });
+  const customerLedger = (id: number) => {
+    const customer = customerProfile(getCustomer(id));
+    const sales = all(`SELECT s.*,COALESCE((SELECT SUM(a.amount) FROM receipt_allocations a WHERE a.sale_id=s.id),0) allocated
+      FROM sales s WHERE customer_id=? ORDER BY business_date DESC,created_at DESC,id DESC`, id);
+    const items = saleLineItems(db, sales.map(row => row.id));
+    const payments = all('SELECT * FROM customer_receipts WHERE customer_id=? ORDER BY business_date DESC,created_at DESC,id DESC', id);
+    return { customer, sales: sales.map(row => ledgerSale(row, items)), payments: payments.map(ledgerPayment) };
+  };
   // Called inside the enclosing idempotent transaction. Original sale payments remain immutable.
   const recordReceipt = (customerId: number, userId: number, amount: number, method: z.infer<typeof paymentMethod>, note: string, date: string) => {
     const customer = getCustomer(customerId);
     if (amount <= 0 || amount > customer.due) throw new ApiError(400, 'Payment must be greater than zero and cannot exceed the customer balance due.');
     const openingAmount = Math.min(amount, Math.max(0, customer.opening_due - customer.opening_settled));
-    const receipt = run('INSERT INTO customer_receipts(customer_id,user_id,amount,opening_amount,method,note,business_date,created_at) VALUES(?,?,?,?,?,?,?,?)', customerId, userId, amount, openingAmount, method, note, date, now());
+    const remainingDue = customer.due - amount;
+    const receipt = run('INSERT INTO customer_receipts(customer_id,user_id,amount,opening_amount,method,note,business_date,created_at,remaining_due) VALUES(?,?,?,?,?,?,?,?,?)', customerId, userId, amount, openingAmount, method, note, date, now(), remainingDue);
     const id = Number(receipt.lastInsertRowid);
     let remaining = amount - openingAmount;
     const unpaidSales = all(`SELECT s.id,s.total-s.paid-COALESCE(SUM(a.amount),0) due
@@ -365,7 +403,7 @@ export function createApp(options: CoreOptions) {
     }
     if (remaining !== 0) throw new ApiError(409, 'The customer balance changed. Reload the ledger and try again.');
     recordActivity('payment', `Payment from ${customer.name}`, `${method} · customer balance collection`, amount);
-    return { id, amount, remainingDue: customer.due - amount };
+    return { id, amount, remainingDue };
   };
 
   app.get('/api/health', (_req, res) => res.json({ ok: true, demo: demo && needsOwner(), verificationConfigured: getServiceConfig().verification.email }));
@@ -457,6 +495,15 @@ export function createApp(options: CoreOptions) {
     notify('shop');
     res.json(shopProfile(one('SELECT * FROM shop WHERE id=1')!));
   });
+  app.patch('/api/shop/logo', auth, ownerOnly, (req: AuthRequest, res) => {
+    const { uploadId } = z.object({ uploadId: z.number().int().positive().nullable() }).parse(req.body);
+    if (uploadId !== null && !one("SELECT id FROM uploads WHERE id=? AND user_id=? AND purpose='shop-logo'", uploadId, req.user!.id)) {
+      throw new ApiError(400, 'Choose a shop logo uploaded by your account.');
+    }
+    run('UPDATE shop SET logo_upload_id=? WHERE id=1', uploadId);
+    notify('shop');
+    res.json(shopProfile(one('SELECT * FROM shop WHERE id=1')!));
+  });
   app.post('/api/auth/logout', (req, res) => {
     let sessionId: string | undefined;
     const token = req.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
@@ -493,6 +540,59 @@ export function createApp(options: CoreOptions) {
     }
     loginAttempts.delete(key);
     res.json(authResult(user));
+  });
+  const recoveryEmail = z.string().trim().email().max(254).transform(email => email.toLowerCase());
+  const recoveryLimits = new Map<string, { count: number; expires: number }>();
+  const resettingUsers = new Set<number>();
+  const invalidReset = () => new ApiError(400, 'That reset link or code does not match the account, has expired, or was already used.');
+  const recoveryAttempt = (key: string, limit: number, duration: number) => {
+    const time = Date.now();
+    if (recoveryLimits.size >= 2048) {
+      for (const [name, entry] of recoveryLimits) if (entry.expires <= time) recoveryLimits.delete(name);
+      if (recoveryLimits.size >= 2048 && !recoveryLimits.has(key)) throw new ApiError(429, 'Too many reset attempts. Try again later.');
+    }
+    const entry = recoveryLimits.get(key);
+    const attempt = entry && entry.expires > time ? entry : { count: 0, expires: time + duration };
+    if (attempt.count >= limit) throw new ApiError(429, 'Too many reset attempts. Try again later.');
+    attempt.count++;
+    recoveryLimits.set(key, attempt);
+  };
+  app.post('/api/auth/password-reset/request', async (req, res) => {
+    const { email } = z.object({ email: recoveryEmail }).strict().parse(req.body);
+    if (!options.passwordRecovery && !getServiceConfig().verification.email) throw new ApiError(503, 'Email password reset is not configured for this shop.');
+    recoveryAttempt(`request-ip:${req.ip}`, 20, 15 * 60_000);
+    recoveryAttempt(`request-email:${email}`, 1, 60_000);
+    const user = one('SELECT firebase_uid FROM users WHERE email=? COLLATE NOCASE AND disabled=0 AND is_demo=0', email);
+    if (user) await passwordRecovery.send(email, !user.firebase_uid);
+    res.json({ ok: true });
+  });
+  app.post('/api/auth/password-reset/confirm', async (req, res) => {
+    const { email, code, password } = z.object({
+      email: recoveryEmail,
+      code: z.string().trim().regex(/^[A-Za-z0-9_-]{8,2048}$/, 'Paste a valid reset link or code.'),
+      password: z.string().min(10, 'Use at least 10 characters.').max(128),
+    }).strict().parse(req.body);
+    recoveryAttempt(`confirm-ip:${req.ip}`, 15, 5 * 60_000);
+    const user = one('SELECT id,firebase_uid FROM users WHERE email=? COLLATE NOCASE AND disabled=0 AND is_demo=0', email);
+    if (!user) throw invalidReset();
+    if (resettingUsers.has(user.id)) throw new ApiError(409, 'A password reset is already in progress. Wait a moment and try again.');
+    resettingUsers.add(user.id);
+    try {
+      if (await passwordRecovery.verifyCode(code) !== email) throw invalidReset();
+      const passwordHash = hashPassword(password);
+      const identity = await passwordRecovery.reset(code, email, password);
+      if (identity.email !== email || (user.firebase_uid && user.firebase_uid !== identity.uid)) throw invalidReset();
+      transaction(() => {
+        const active = one('SELECT firebase_uid FROM users WHERE id=? AND email=? COLLATE NOCASE AND disabled=0', user.id, email);
+        if (!active || (active.firebase_uid && active.firebase_uid !== identity.uid) || one('SELECT id FROM users WHERE firebase_uid=? AND id<>?', identity.uid, user.id)) throw invalidReset();
+        run('UPDATE users SET password_hash=?,firebase_uid=? WHERE id=?', passwordHash, identity.uid, user.id);
+        run('UPDATE user_sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL', now(), user.id);
+      });
+      loginAttempts.delete(`${req.ip}:${email}`);
+      res.json({ ok: true });
+    } finally {
+      resettingUsers.delete(user.id);
+    }
   });
   const usernameSchema = z.string().trim().min(3).max(24).regex(/^[a-zA-Z0-9_]+$/, 'Use 3–24 letters, numbers or underscores.');
   app.get('/api/auth/username', (req, res) => {
@@ -645,7 +745,7 @@ export function createApp(options: CoreOptions) {
     if (body.imageUrl && !asset) throw new ApiError(400, 'Upload the product image before attaching it.');
     if (asset && body.imageUrl && asset.url !== body.imageUrl) throw new ApiError(400, 'The image URL does not match the uploaded image.');
     const id = transaction(() => {
-      const result = run('INSERT INTO products(name,category,unit,price,cost,stock,reorder_level,description,emoji,image_url,upload_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)', body.name, body.category, body.unit, body.price, body.cost, body.stock, body.reorderLevel, body.description, body.emoji, asset?.url ?? null, asset?.id ?? null, now());
+      const result = run('INSERT INTO products(name,category,unit,price,cost,stock,reorder_level,description,emoji,image_url,upload_id,created_at,supplier,reference) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)', body.name, body.category, body.unit, body.price, body.cost, body.stock, body.reorderLevel, body.description, body.emoji, asset?.url ?? null, asset?.id ?? null, now(), body.supplier, body.reference);
       const id = Number(result.lastInsertRowid);
       run('INSERT INTO stock_movements(product_id,quantity,type,created_at) VALUES(?,?,?,?)', id, body.stock, 'opening', now());
       return id;
@@ -658,6 +758,7 @@ export function createApp(options: CoreOptions) {
       name: z.string().trim().min(2).max(120).optional(), category: z.string().trim().min(1).max(60).optional(),
       price: integer.optional(), reorderLevel: z.number().int().min(0).max(100_000).optional(),
       description: z.string().trim().max(2000).optional(),
+      supplier: z.string().trim().max(120).optional(), reference: z.string().trim().max(120).optional(),
       unit: z.string().trim().min(1).max(30).optional(), cost: integer.optional(), emoji: productIcon.optional(),
       stock: z.number().int().min(0).max(1_000_000).optional(), expectedStock: z.number().int().min(0).max(1_000_000).optional(),
       uploadId: z.number().int().positive().nullable().optional(),
@@ -671,7 +772,7 @@ export function createApp(options: CoreOptions) {
     }
     const columns: Record<string, string> = {
       name: 'name', category: 'category', unit: 'unit', price: 'price', cost: 'cost', stock: 'stock',
-      reorderLevel: 'reorder_level', description: 'description', emoji: 'emoji',
+      reorderLevel: 'reorder_level', description: 'description', emoji: 'emoji', supplier: 'supplier', reference: 'reference',
     };
     const updated = transaction(() => {
       const previous = getProduct(id);
@@ -710,14 +811,14 @@ export function createApp(options: CoreOptions) {
     res.json({ ok: true });
   });
   app.post('/api/purchases', auth, staff, (req, res) => {
-    const body = z.object({ productId: z.number().int().positive(), quantity, unitCost: integer, reference: z.string().trim().max(120).default(''), requestId }).parse(req.body);
+    const body = z.object({ productId: z.number().int().positive(), quantity, unitCost: integer, supplier: z.string().trim().max(120).optional(), reference: z.string().trim().max(120).default(''), requestId }).parse(req.body);
     const result = cachedRequest('purchase', body.requestId, body, () => {
       const p = getProduct(body.productId);
       const stock = p.stock + body.quantity;
       if (stock > 1_000_000) throw new ApiError(400, 'The resulting stock is too large.');
       const inventoryValue = safeMoney(safeMoney(p.stock * p.cost) + safeMoney(body.quantity * body.unitCost));
       const cost = Math.round(inventoryValue / stock);
-      const row = run('INSERT INTO purchases(product_id,quantity,unit_cost,reference,created_at) VALUES(?,?,?,?,?)', p.id, body.quantity, body.unitCost, body.reference, now());
+      const row = run('INSERT INTO purchases(product_id,quantity,unit_cost,reference,created_at,supplier,product_name,product_unit,product_category) VALUES(?,?,?,?,?,?,?,?,?)', p.id, body.quantity, body.unitCost, body.reference, now(), body.supplier || p.supplier, p.name, p.unit, p.category);
       const id = Number(row.lastInsertRowid);
       run('UPDATE products SET stock=?,cost=? WHERE id=?', stock, cost, p.id);
       run('DELETE FROM stock_alert_reads WHERE product_id=?', p.id);
@@ -740,28 +841,66 @@ export function createApp(options: CoreOptions) {
       if (body.paid < total && !body.customerName && !body.customerId) throw new ApiError(400, 'Choose or enter a customer when recording a due balance.');
       let customerId: number | null = null;
       let customerName = body.customerName;
+      let customerPhone = '', customerEmail = '', customerAddress = '';
       let previousDue = 0;
+      let previousDueReceiptId: number | null = null;
       if (body.customerId) {
         const customer = getCustomer(body.customerId);
         customerId = customer.id; customerName = customer.name;
+        customerPhone = customer.phone; customerEmail = customer.email; customerAddress = customer.address;
         previousDue = customer.due;
         if (previousDuePayment > previousDue) throw new ApiError(400, 'The previous-balance payment exceeds this customer’s outstanding balance.');
-        if (previousDuePayment > 0) recordReceipt(customerId!, req.user!.id, previousDuePayment, 'cash', 'Previous balance collected at checkout', dhakaDate());
+        if (previousDuePayment > 0) previousDueReceiptId = recordReceipt(customerId!, req.user!.id, previousDuePayment, 'cash', 'Previous balance collected at checkout', dhakaDate()).id;
       } else if (body.customerName) {
         customerId = Number(run('INSERT INTO customers(name,created_at) VALUES(?,?)', body.customerName, now()).lastInsertRowid);
       }
-      const sale = run('INSERT INTO sales(customer_id,total,paid,cost,created_at,business_date) VALUES(?,?,?,?,?,?)', customerId, total, body.paid, cost, now(), dhakaDate());
+      const sale = run(`INSERT INTO sales(customer_id,total,paid,cost,created_at,business_date,customer_name,customer_phone,customer_email,customer_address,checkout_receipt_id)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?)`, customerId, total, body.paid, cost, now(), dhakaDate(), customerName, customerPhone, customerEmail, customerAddress, previousDueReceiptId);
       const id = Number(sale.lastInsertRowid);
       for (const line of lines) {
-        run('INSERT INTO sale_items(sale_id,product_id,quantity,unit_price,unit_cost) VALUES(?,?,?,?,?)', id, line.productId, line.quantity, line.product.price, line.product.cost);
+        run('INSERT INTO sale_items(sale_id,product_id,quantity,unit_price,unit_cost,product_name,product_unit) VALUES(?,?,?,?,?,?,?)', id, line.productId, line.quantity, line.product.price, line.product.cost, line.product.name, line.product.unit);
         run('UPDATE products SET stock=stock-? WHERE id=?', line.quantity, line.productId);
         run('DELETE FROM stock_alert_reads WHERE product_id=?', line.productId);
         run('INSERT INTO stock_movements(product_id,quantity,type,reference_id,created_at) VALUES(?,?,?,?,?)', line.productId, -line.quantity, 'sale', id, now());
       }
       recordActivity('sale', `Sale #${id}`, customerName || 'Walk-in customer', total);
-      return { id, total, paid: body.paid, due: total - body.paid, previousDue, previousDuePayment, customerBalance: previousDue - previousDuePayment + total - body.paid };
+      return { id, total, paid: body.paid, due: total - body.paid, previousDue, previousDuePayment, customerBalance: previousDue - previousDuePayment + total - body.paid, customerId, previousDueReceiptId };
     });
     notify('catalog'); notify('alerts'); if (previousDuePayment > 0) notify('payments'); res.status(201).json(result);
+  });
+  app.get('/api/sales/:id/invoice', auth, staff, (req, res) => {
+    const id = z.coerce.number().int().positive().parse(req.params.id);
+    const sale = one(`SELECT s.*, COALESCE(s.customer_name,c.name) name,
+      COALESCE(s.customer_phone,c.phone) phone, COALESCE(s.customer_email,c.email) email,
+      COALESCE(s.customer_address,c.address) address, COALESCE(r.amount,0) earlier_payment,
+      COALESCE((SELECT SUM(a.amount) FROM receipt_allocations a WHERE a.sale_id=s.id),0) allocated
+      FROM sales s LEFT JOIN customers c ON c.id=s.customer_id
+      LEFT JOIN customer_receipts r ON r.id=s.checkout_receipt_id WHERE s.id=?`, id);
+    if (!sale) throw new ApiError(404, 'Sale not found.');
+    const received = sale.paid + sale.allocated;
+    const due = sale.total - received;
+    const document: ShopDocument = {
+      title: 'Sales Invoice', subtitle: `Invoice #${id}  |  ${sale.business_date}`,
+      filename: `SmartShop-Sale-${id}.pdf`, shop: shopProfile(one('SELECT * FROM shop WHERE id=1')!),
+      status: due > 0 ? 'DUE' : 'PAID',
+      details: [
+        { label: 'Customer', value: sale.name || 'Walk-in customer' },
+        { label: 'Phone', value: sale.phone || '' },
+        { label: 'Email', value: sale.email || '' },
+        { label: 'Address', value: sale.address || '' },
+      ].filter(field => field.value),
+      sections: [{ title: 'Items sold', columns: ['Product', 'Quantity', 'Unit price', 'Line total'],
+        rows: (saleLineItems(db, [id]).get(id) ?? []).map(line => [line.name, `${line.quantity} ${line.unit}`, documentMoney(line.unitPrice), documentMoney(line.total)]) }],
+      totals: [
+        { label: 'Bill total', value: documentMoney(sale.total) },
+        { label: 'Paid at sale', value: documentMoney(sale.paid) },
+        { label: 'Later payments for this bill', value: documentMoney(sale.allocated) },
+        { label: 'Received total for this bill', value: documentMoney(received) },
+        { label: 'Still due on this bill', value: documentMoney(due) },
+      ],
+      note: sale.earlier_payment > 0 ? `Previous balance paid at checkout: ${documentMoney(sale.earlier_payment)} (receipt #${sale.checkout_receipt_id}). This is separate from this bill.` : undefined,
+    };
+    res.set('Cache-Control', 'private, no-store').json(document);
   });
   app.post('/api/expenses', auth, staff, (req, res) => {
     const body = z.object({ title: z.string().trim().min(2).max(120), amount: integer.refine(n => n > 0, 'Enter an amount greater than zero.'), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), requestId }).parse(req.body);
@@ -803,13 +942,29 @@ export function createApp(options: CoreOptions) {
   });
   app.get('/api/customers/:id/ledger', auth, staff, (req, res) => {
     const id = z.coerce.number().int().positive().parse(req.params.id);
+    res.json(customerLedger(id));
+  });
+  app.get('/api/customers/:id/ledger/document', auth, staff, (req, res) => {
+    const id = z.coerce.number().int().positive().parse(req.params.id);
+    res.set('Cache-Control', 'no-store').json(customerHistoryDocument(shopProfile(one('SELECT * FROM shop WHERE id=1')!), customerLedger(id)));
+  });
+  app.get('/api/customers/:id/payments/:paymentId/invoice', auth, staff, (req, res) => {
+    const id = z.coerce.number().int().positive().parse(req.params.id);
+    const paymentId = z.coerce.number().int().positive().parse(req.params.paymentId);
     const customer = customerProfile(getCustomer(id));
-    const sales = all(`SELECT s.*,COALESCE((SELECT SUM(a.amount) FROM receipt_allocations a WHERE a.sale_id=s.id),0) allocated FROM sales s WHERE customer_id=? ORDER BY created_at DESC,id DESC`, id).map(row => ({
-      id: row.id, total: row.total, paid: row.paid, settled: row.paid + row.allocated,
-      due: row.total - row.paid - row.allocated, createdAt: row.created_at,
-    }));
-    const payments = all('SELECT * FROM customer_receipts WHERE customer_id=? ORDER BY created_at DESC,id DESC', id).map(row => ({ id: row.id, amount: row.amount, method: row.method, note: row.note, date: row.business_date, createdAt: row.created_at }));
-    res.json({ customer, sales, payments });
+    const receipt = one('SELECT * FROM customer_receipts WHERE id=? AND customer_id=?', paymentId, id);
+    if (!receipt) throw new ApiError(404, 'Payment receipt not found.');
+    const recordedDue = receipt.remaining_due ?? one(`SELECT json_extract(response,'$.remainingDue') remaining_due
+      FROM requests WHERE kind='customer-payment' AND json_extract(response,'$.id')=?`, paymentId)?.remaining_due ?? null;
+    const sales = all(`SELECT s.*, ra.amount payment_amount,
+      COALESCE((SELECT SUM(a.amount) FROM receipt_allocations a WHERE a.sale_id=s.id AND a.receipt_id<=?),0) allocated
+      FROM receipt_allocations ra JOIN sales s ON s.id=ra.sale_id
+      WHERE ra.receipt_id=? AND s.customer_id=? ORDER BY s.created_at,s.id`, paymentId, paymentId, id);
+    const items = saleLineItems(db, sales.map(row => row.id));
+    const allocated = sales.map(row => ({ ...ledgerSale(row, items), paymentAmount: row.payment_amount }));
+    res.set('Cache-Control', 'no-store').json(customerPaymentDocument(
+      shopProfile(one('SELECT * FROM shop WHERE id=1')!), customer, ledgerPayment(receipt), allocated, recordedDue,
+    ));
   });
   app.post('/api/customers/:id/payments', auth, staff, (req: AuthRequest, res) => {
     const id = z.coerce.number().int().positive().parse(req.params.id);
@@ -821,6 +976,7 @@ export function createApp(options: CoreOptions) {
   app.get('/api/activity', auth, staff, (_req, res) => res.json(all('SELECT * FROM activity ORDER BY id DESC LIMIT 30').map(row => ({ id: row.id, type: row.type, title: row.title, detail: row.detail, amount: row.amount, createdAt: row.created_at }))));
   mountCommunity(app, { db, auth, optionalAuth, notify, transaction });
   mountUploads(app, { db, auth, staff, notify });
+  mountReports(app, { db, auth, staff, getShop: () => shopProfile(one('SELECT * FROM shop WHERE id=1')!) });
   app.use('/api', (_req, _res, next) => next(new ApiError(404, 'API endpoint not found.')));
   app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
     if (error instanceof z.ZodError) return void res.status(400).json({ error: error.issues[0]?.message ?? 'Check the entered details.' });

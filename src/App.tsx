@@ -14,10 +14,12 @@ import { StockAlerts } from './StockAlerts';
 import { StaffAccess } from './StaffAccess';
 import { ProductComments } from './community';
 import { DeleteProductDialog, ProductFormDialog } from './ProductFormDialog';
+import { PdfDownloadButton } from './PdfDownloadButton';
+import { ReportsDialog } from './ReportsDialog';
 import { asCents, dayLabel, Empty, ErrorNotice, Field, Loading, Modal, money, ProductArt, SubmitButton } from './components';
 
 type Page = 'dashboard' | 'inventory' | 'sales' | 'customers' | 'catalog' | 'shop' | 'settings';
-type Dialog = 'login' | 'product' | 'product-edit' | 'product-delete' | 'purchase' | 'expense' | 'account' | 'connection' | null;
+type Dialog = 'login' | 'product' | 'product-edit' | 'product-delete' | 'purchase' | 'expense' | 'reports' | 'account' | 'connection' | null;
 type ProductPage = { items: Product[]; total: number; page: number; pages: number; categories: string[] };
 
 function useResource<T>(path: string | null, revision = 0) {
@@ -125,7 +127,15 @@ export default function App() {
       <header className="topbar"><div className="mobile-brand"><ShoppingBag size={22} /><strong>smart<span>shop</span></strong></div><div className="breadcrumb"><span>{ownerView ? 'Workspace' : 'Our shop'}</span><ChevronRight size={14} /><strong>{ownerView ? ownerNavigation.find(n => n.id === page)?.label : page === 'shop' ? 'Location & details' : 'Products'}</strong></div><div className="topbar-actions">{staff && <StockAlerts revision={revision} onOpenStock={()=>navigate('inventory')} />}<button className="icon-button" aria-label="Shop connection settings" onClick={()=>setDialog('connection')}><SlidersHorizontal size={18}/></button><span className="date-label"><Clock3 size={15} />{today}</span>{ownerView && <button className="icon-button storefront-switch" aria-label="Open customer storefront" title="Customer storefront" onClick={() => navigate('catalog')}><Store size={19} /></button>}{user ? <button className="topbar-account" aria-label={`Your account: ${user.name}`} onClick={()=>setDialog('account')}>{user.avatarUrl ? <img src={mediaUrl(user.avatarUrl)} alt="Your profile" className="account-photo"/> : user.name.charAt(0).toUpperCase()}</button> : <button className="button button-small button-outline" onClick={() => setDialog('login')}>Sign in <ArrowRight size={15} /></button>}</div></header>
 
       <main className={`main-content ${page === 'sales' ? 'checkout-main' : ''}`}>
-        <div className="page-heading"><div><p className="eyebrow"><span />{ownerView ? 'YOUR BUSINESS, AT A GLANCE' : 'WELCOME TO SMARTSHOP'}</p><h1>{pageTitles[page].title}</h1><p className="page-subtitle">{pageTitles[page].subtitle}</p></div><div className="page-actions">{ownerView && page === 'dashboard' && <><button className="button button-outline" onClick={() => setDialog('expense')}><Plus size={17} /> Add expense</button><button className="button button-primary" onClick={() => navigate('sales')}><Plus size={18} /> New sale</button></>}{page === 'inventory' && <><button className="button button-outline" onClick={() => setDialog('purchase')}><ArrowDownToLine size={17} /> Add purchase</button><button className="button button-primary" onClick={() => setDialog('product')}><Plus size={18} /> Add product</button></>}{!ownerView && staff && <button className="button button-outline mobile-dashboard-link" onClick={() => navigate('dashboard')}><LayoutDashboard size={17} /> Dashboard</button>}</div></div>
+        <div className="page-heading">
+          <div><p className="eyebrow"><span />{ownerView ? 'YOUR BUSINESS, AT A GLANCE' : 'WELCOME TO SMARTSHOP'}</p><h1>{pageTitles[page].title}</h1><p className="page-subtitle">{pageTitles[page].subtitle}</p></div>
+          <div className="page-actions">
+            {ownerView && (page === 'dashboard' || page === 'inventory' || page === 'sales') && <button className="button button-outline" onClick={() => setDialog('reports')}><FileText size={17} /> Reports & PDFs</button>}
+            {ownerView && page === 'dashboard' && <><button className="button button-outline" onClick={() => setDialog('expense')}><Plus size={17} /> Add expense</button><button className="button button-primary" onClick={() => navigate('sales')}><Plus size={18} /> New sale</button></>}
+            {page === 'inventory' && <><button className="button button-outline" onClick={() => setDialog('purchase')}><ArrowDownToLine size={17} /> Add purchase</button><button className="button button-primary" onClick={() => setDialog('product')}><Plus size={18} /> Add product</button></>}
+            {!ownerView && staff && <button className="button button-outline mobile-dashboard-link" onClick={() => navigate('dashboard')}><LayoutDashboard size={17} /> Dashboard</button>}
+          </div>
+        </div>
 
         <AnimatePresence mode="wait"><motion.div key={page} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} transition={{ duration: 0.18 }}>
           {page === 'dashboard' && staff && <DashboardPage revision={revision} onSale={() => navigate('sales')} onPurchase={() => setDialog('purchase')} />}
@@ -148,8 +158,9 @@ export default function App() {
     {dialog === 'product' && staff && <ProductFormDialog onClose={() => setDialog(null)} onSuccess={message => { setDialog(null); notify(message); }} />}
     {dialog === 'product-edit' && user?.role === 'owner' && managedProduct && <ProductFormDialog key={managedProduct.id} product={managedProduct} onClose={() => setDialog(null)} onSuccess={message => { setDialog(null); notify(message); }} />}
     {dialog === 'product-delete' && user?.role === 'owner' && managedProduct && <DeleteProductDialog product={managedProduct} onClose={() => setDialog(null)} onSuccess={message => { setDialog(null); notify(message); }} />}
-    {dialog === 'purchase' && staff && <PurchaseDialog revision={revision} onClose={() => setDialog(null)} onSuccess={message => { setDialog(null); notify(message); }} />}
+    {dialog === 'purchase' && staff && <PurchaseDialog revision={revision} onClose={() => setDialog(null)} onSuccess={notify} />}
     {dialog === 'expense' && staff && <ExpenseDialog onClose={() => setDialog(null)} onSuccess={message => { setDialog(null); notify(message); }} />}
+    {dialog === 'reports' && staff && <ReportsDialog onClose={() => setDialog(null)} />}
     {selectedProduct && <ProductDialog product={selectedProduct} user={user} revision={revision} onClose={() => setSelectedProduct(null)} onLogin={() => setDialog('login')} onSuccess={notify} />}
     <AnimatePresence>{toast && <motion.div className="toast" role="status" initial={{ y: 30, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 15, opacity: 0 }}><CheckCircle2 size={19} /><span>{toast}</span><button aria-label="Dismiss notification" onClick={() => setToast('')}><X size={16} /></button></motion.div>}</AnimatePresence>
   </div>;
@@ -238,18 +249,51 @@ function PurchaseDialog({ revision, onClose, onSuccess }: { revision: number; on
   const [productId, setProductId] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [cost, setCost] = useState('');
+  const [receipt, setReceipt] = useState<number | null>(null);
   const requestId = useRef(newRequestId());
   const [locked, setLocked] = useState(false);
   const pending = useRef<object | null>(null);
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault(); setBusy(true); setError('');
-    if (!pending.current) { const form = new FormData(e.currentTarget); pending.current = { productId: Number(productId), quantity: Number(quantity), unitCost: asCents(cost), reference: String(form.get('reference') || ''), requestId: requestId.current }; }
+    if (!pending.current) {
+      const form = new FormData(e.currentTarget);
+      const supplier = String(form.get('supplier') || '').trim();
+      pending.current = { productId: Number(productId), quantity: Number(quantity), unitCost: asCents(cost), ...(supplier ? { supplier } : {}), reference: String(form.get('reference') || ''), requestId: requestId.current };
+    }
     setLocked(true);
-    try { await post('/purchases', pending.current); onSuccess('Purchase recorded. Your stock is updated.'); }
+    try {
+      const result = await post<{ id: number }>('/purchases', pending.current);
+      setReceipt(result.id);
+      onSuccess('Purchase recorded. Your stock is updated.');
+    }
     catch (err) { setError(err instanceof Error ? err.message : 'Could not record purchase.'); if (err instanceof ApiError && err.status >= 400 && err.status < 500) { pending.current = null; requestId.current = newRequestId(); setLocked(false); } }
     finally { setBusy(false); }
   };
-  return <Modal title="Keep the good things coming." eyebrow="RECORD PURCHASE" onClose={onClose}><p className="modal-intro">Record stock received from your supplier. Your stock and average cost will update together.</p><form className="form-stack" onSubmit={submit}><Field label="Product"><select value={productId} required disabled={locked} onChange={e => { setProductId(e.target.value); const p = inventory.data?.find(item => item.id === Number(e.target.value)); if (p) setCost((p.cost / 100).toFixed(2)); }}><option value="">Select a product</option>{inventory.data?.map(p => <option value={p.id} key={p.id}>{p.name} · {p.stock} {p.unit} in stock</option>)}</select></Field><div className="form-grid"><Field label="Quantity received"><input type="number" value={quantity} onChange={e => setQuantity(e.target.value)} min="1" max="100000" step="1" required disabled={locked} /></Field><Field label="Cost per unit (৳)"><input type="number" value={cost} onChange={e => setCost(e.target.value)} min="0" max="1000000" step="0.01" required disabled={locked} /></Field></div><Field label="Supplier / reference"><input name="reference" maxLength={120} placeholder="e.g. Supplier name or invoice number" disabled={locked} /></Field><div className="form-total"><span>Total purchase cost</span><strong>{money((Number(quantity) || 0) * asCents(cost || 0))}</strong></div><ErrorNotice>{error || inventory.error}</ErrorNotice>{locked && error && <p className="form-note">Retry resends the same purchase safely. Check recent activity before recording a replacement.</p>}<SubmitButton busy={busy} disabled={!productId}>{locked ? 'Retry this purchase' : 'Confirm purchase'}<CheckCircle2 size={17} /></SubmitButton></form></Modal>;
+  if (receipt !== null) return <Modal title={`Purchase #${receipt} saved`} eyebrow="PURCHASE COMPLETE" onClose={onClose}>
+    <div className="form-stack">
+      <p className="modal-intro">The stock and average cost are up to date.</p>
+      <PdfDownloadButton path={`/purchases/${receipt}/bill`} label="Download purchase bill PDF" className="button button-primary button-full" />
+      <button type="button" className="button button-outline button-full" onClick={onClose}>Done</button>
+    </div>
+  </Modal>;
+  const selected = inventory.data?.find(item => item.id === Number(productId));
+  return <Modal title="Keep the good things coming." eyebrow="RECORD PURCHASE" onClose={onClose}>
+    <p className="modal-intro">Record stock received from your supplier. Your stock and average cost will update together.</p>
+    <form className="form-stack" onSubmit={submit}>
+      <Field label="Product"><select value={productId} required disabled={locked} onChange={e => {
+        setProductId(e.target.value);
+        const product = inventory.data?.find(item => item.id === Number(e.target.value));
+        if (product) setCost((product.cost / 100).toFixed(2));
+      }}><option value="">Select a product</option>{inventory.data?.map(p => <option value={p.id} key={p.id}>{p.name} · {p.stock} {p.unit} in stock</option>)}</select></Field>
+      <div className="form-grid"><Field label="Quantity received"><input type="number" value={quantity} onChange={e => setQuantity(e.target.value)} min="1" max="100000" step="1" required disabled={locked} /></Field><Field label="Cost per unit (৳)"><input type="number" value={cost} onChange={e => setCost(e.target.value)} min="0" max="1000000" step="0.01" required disabled={locked} /></Field></div>
+      <Field label="Supplier" hint={selected?.supplier ? `Leave blank to use ${selected.supplier}.` : 'Optional'}><input name="supplier" maxLength={120} placeholder={selected?.supplier || 'Supplier name'} disabled={locked} /></Field>
+      <Field label="Reference"><input name="reference" maxLength={120} placeholder="Supplier bill number or reference" disabled={locked} /></Field>
+      <div className="form-total"><span>Total purchase cost</span><strong>{money((Number(quantity) || 0) * asCents(cost || 0))}</strong></div>
+      <ErrorNotice>{error || inventory.error}</ErrorNotice>
+      {locked && error && <p className="form-note">Retry resends the same purchase safely. Check recent activity before recording a replacement.</p>}
+      <SubmitButton busy={busy} disabled={!productId}>{locked ? 'Retry this purchase' : 'Confirm purchase'}<CheckCircle2 size={17} /></SubmitButton>
+    </form>
+  </Modal>;
 }
 
 function ExpenseDialog({ onClose, onSuccess }: { onClose: () => void; onSuccess: (message: string) => void }) {
