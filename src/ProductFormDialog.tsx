@@ -1,7 +1,8 @@
+import { MediaImage } from './MediaImage';
 import { useState, type FormEvent } from 'react';
 import { Plus, Save, Trash2 } from 'lucide-react';
 import type { InventoryProduct } from '../shared/types';
-import { api, mediaUrl, post } from './api';
+import { api, post } from './api';
 import { asCents, ErrorNotice, Field, Modal, SubmitButton } from './components';
 import { ProductIconPicker } from './ProductIconPicker';
 import { CloudUploadField, type CloudUpload } from './uploads';
@@ -99,7 +100,7 @@ export function ProductFormDialog({ product, onClose, onSuccess }: ProductDialog
       </Field>
       <ProductIconPicker value={emoji} onChange={setEmoji} />
       {product?.imageUrl && !photo && <div className="product-current-photo">
-        {!removePhoto && <img src={mediaUrl(product.imageUrl)} alt="Current product" />}
+        {!removePhoto && <MediaImage src={product.imageUrl} alt="Current product" />}
         <button className="button button-outline" type="button" disabled={busy || uploading} onClick={() => setRemovePhoto(!removePhoto)}>
           {removePhoto ? 'Keep current photo' : 'Remove current photo'}
         </button>

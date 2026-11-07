@@ -1,8 +1,9 @@
+import { MediaImage } from './MediaImage';
 import { ProfileEditor } from './ProfileEditor';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { CheckCircle2, CircleHelp, Link2, LoaderCircle, Mail, Phone, RefreshCw, ShieldCheck } from 'lucide-react';
 import type { AuthResponse, User } from '../shared/types';
-import { mediaUrl, api, post } from './api';
+import { api, post } from './api';
 import { ErrorNotice, Field, Loading, Modal, SubmitButton } from './components';
 import { PasswordField } from './PasswordField';
 import { beginPhoneVerification, connectVerificationAccount, phoneVerificationSupported, sendVerificationEmail, verificationIdToken, verificationMessage, verificationSession, VerificationError, type PhoneChallenge, type VerificationConfig } from './firebase';
@@ -93,7 +94,7 @@ export function AccountPanel({ user, onUpdate, onClose, onSignOut, onActivated }
   const configuredPhone = config?.verification.phone && phoneVerificationSupported();
   return <Modal title="Your SmartShop account" eyebrow={user.role === 'owner' ? 'SHOP OWNER' : user.role === 'staff' ? 'SHOP STAFF' : 'CUSTOMER ACCOUNT'} onClose={onClose} wide>
     <style>{accountPanelStyles}</style>
-    <div className="account-profile"><div className="account-profile-avatar">{user.avatarUrl ? <img src={mediaUrl(user.avatarUrl)} alt="Your profile" className="account-photo"/> : user.name.charAt(0).toUpperCase()}</div><div><h3>{user.name}</h3><p>@{user.username}</p></div><ShieldCheck size={26} /></div>
+    <div className="account-profile"><div className="account-profile-avatar">{user.avatarUrl ? <MediaImage src={user.avatarUrl} alt="Your profile" className="account-photo"/> : user.name.charAt(0).toUpperCase()}</div><div><h3>{user.name}</h3><p>@{user.username}</p></div><ShieldCheck size={26} /></div>
     {user.isDemo && <p className="account-pending-note">This is a sample preview account. Sign in with your own registered email to activate the real shop owner and verify your contacts.</p>}
     {config?.ownerSetupRequired && !user.isDemo && user.role === 'customer' && onActivated && <section className="account-verification-section"><div className="account-section-title"><ShieldCheck size={20}/><div><h3>Activate your shop owner</h3><p>If this is your shop, use the private code from your Mac. Your existing account and password will be kept.</p></div></div><form className="form-stack" onSubmit={event => { event.preventDefault(); void run('owner', async () => { const result = await post<AuthResponse>('/setup/owner/claim', { setupCode }); onActivated(result); }); }}><Field label="Owner activation code" hint="In your Mac project terminal, run npm run owner:code. This activates the owner once and disables the sample accounts."><input value={setupCode} onChange={event => setSetupCode(event.target.value)} required autoComplete="off" maxLength={128} placeholder="Private code from your Mac"/></Field><SubmitButton busy={busy === 'owner'} disabled={!!busy}>Activate as shop owner</SubmitButton></form></section>}
     <div className="account-verification-summary"><span className={user.emailVerified ? 'verified' : ''}><Mail size={15} />Email {user.emailVerified ? 'verified' : 'not verified'}</span><span className={user.phoneVerified ? 'verified' : ''}><Phone size={15} />Phone {user.phoneVerified ? 'verified' : 'not verified'}</span></div>

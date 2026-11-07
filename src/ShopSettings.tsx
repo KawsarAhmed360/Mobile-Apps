@@ -1,7 +1,8 @@
+import { MediaImage } from './MediaImage';
 import { useEffect, useState, type FormEvent } from 'react';
 import { CheckCircle2, MapPin, Save, Store, UserRound } from 'lucide-react';
 import type { Shop, User } from '../shared/types';
-import { mediaUrl, api } from './api';
+import { api } from './api';
 import { ErrorNotice, Field, Loading, SubmitButton } from './components';
 import { CloudUploadField, type CloudUpload } from './uploads';
 import './management.css';
@@ -92,8 +93,8 @@ export function ShopSettings({ onUserUpdate, onSaved }: { onUserUpdate: (user: U
   if (loadError || !settings) return <section className="panel management-panel"><ErrorNotice>{loadError || 'Shop settings could not be loaded.'}</ErrorNotice><button className="button button-outline" onClick={() => setRetry(value => value + 1)}>Try again</button></section>;
   return <div className="shop-settings-layout">
     <style>{ownerPhotoStyles}</style>
-    <section className="panel management-panel"><div className="management-section-heading"><span className="owner-heading-avatar">{settings.owner.avatarUrl ? <img src={mediaUrl(settings.owner.avatarUrl)} alt="Your profile"/> : <UserRound size={22} />}</span><div><h2>Owner details</h2><p>Your name, profile photo and contact number for this shop.</p></div></div>
-    <div className="owner-photo-preview"><span>{settings.owner.avatarUrl ? <img src={mediaUrl(settings.owner.avatarUrl)} alt={`${settings.owner.name}'s profile photo`}/> : <UserRound size={36}/>}</span><div><strong>Your profile photo</strong><p>Choose the picture shown beside your owner account.</p>{settings.owner.avatarUrl && <button type="button" className="text-button" disabled={ownerLocked} onClick={() => void saveAvatar(null)}>Remove profile photo</button>}</div></div>
+    <section className="panel management-panel"><div className="management-section-heading"><span className="owner-heading-avatar">{settings.owner.avatarUrl ? <MediaImage src={settings.owner.avatarUrl} alt="Your profile"/> : <UserRound size={22} />}</span><div><h2>Owner details</h2><p>Your name, profile photo and contact number for this shop.</p></div></div>
+    <div className="owner-photo-preview"><span>{settings.owner.avatarUrl ? <MediaImage src={settings.owner.avatarUrl} alt={`${settings.owner.name}'s profile photo`}/> : <UserRound size={36}/>}</span><div><strong>Your profile photo</strong><p>Choose the picture shown beside your owner account.</p>{settings.owner.avatarUrl && <button type="button" className="text-button" disabled={ownerLocked} onClick={() => void saveAvatar(null)}>Remove profile photo</button>}</div></div>
     <CloudUploadField purpose="owner-avatar" value={avatarUpload} onBusyChange={setAvatarUploading} disabled={ownerBusy || avatarSaving} onChange={photo => { setAvatarUpload(photo); if (photo) void saveAvatar(photo); }}/>
     {avatarSaving && <p className="management-hint" role="status">Saving your profile photo…</p>}
     {avatarUpload && !ownerLocked && <button className="button button-outline owner-photo-retry" type="button" onClick={() => void saveAvatar(avatarUpload)}>Save profile photo</button>}
@@ -115,7 +116,7 @@ export function ShopSettings({ onUserUpdate, onSaved }: { onUserUpdate: (user: U
       <div className="management-form-end"><SubmitButton busy={shopBusy}><Save size={17} />Save shop details</SubmitButton></div>
     </form>
     <div className="form-stack shop-logo-settings">
-      <div className="owner-photo-preview"><span>{settings.shop.logoUrl ? <img src={mediaUrl(settings.shop.logoUrl)} alt="Current shop logo" /> : <Store size={30} />}</span><div><strong>Invoice logo</strong><p>This logo appears on shop invoices, receipts and reports.</p>{settings.shop.logoUrl && <button type="button" className="text-button" disabled={logoUploading || logoBusy} onClick={() => void saveLogo(null)}>Remove shop logo</button>}</div></div>
+      <div className="owner-photo-preview"><span>{settings.shop.logoUrl ? <MediaImage src={settings.shop.logoUrl} alt="Current shop logo" /> : <Store size={30} />}</span><div><strong>Invoice logo</strong><p>This logo appears on shop invoices, receipts and reports.</p>{settings.shop.logoUrl && <button type="button" className="text-button" disabled={logoUploading || logoBusy} onClick={() => void saveLogo(null)}>Remove shop logo</button>}</div></div>
       <CloudUploadField purpose="shop-logo" value={logoUpload} onChange={setLogoUpload} onBusyChange={setLogoUploading} disabled={logoBusy} />
       {logoUpload && <button type="button" className="button button-outline" disabled={logoBusy || logoUploading} onClick={() => void saveLogo(logoUpload.id)}><Save size={17} />{logoBusy ? 'Saving logo…' : 'Save shop logo'}</button>}
       <ErrorNotice>{logoError}</ErrorNotice>

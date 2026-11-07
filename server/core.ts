@@ -267,8 +267,9 @@ export function createApp(options: CoreOptions) {
   const allowedOrigins = new Set(['http://localhost','https://localhost','capacitor://localhost',...(process.env.APP_ALLOWED_ORIGINS ?? '').split(',').map(value=>value.trim()).filter(Boolean)]);
   app.use((req,res,next)=>{
     const origin=req.headers.origin;
+    res.vary('Origin');
     if(origin && allowedOrigins.has(origin)) {
-      res.setHeader('Access-Control-Allow-Origin',origin); res.setHeader('Vary','Origin');
+      res.setHeader('Access-Control-Allow-Origin',origin);
       res.setHeader('Access-Control-Allow-Headers','Authorization, Content-Type');
       res.setHeader('Access-Control-Allow-Methods','GET, POST, PATCH, PUT, DELETE, OPTIONS');
     }

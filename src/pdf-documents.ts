@@ -2,6 +2,7 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 import { jsPDF } from 'jspdf';
 import type { ShopDocument } from '../shared/document.js';
 import { mediaUrl } from './api.js';
+import { loadMediaBlobUrl, nativeMediaNeedsDownload } from './media.js';
 import bengaliFontUrl from './pdf-assets/NotoSansBengali.ttf?url';
 
 type Alignment = 'left' | 'right';
@@ -35,14 +36,20 @@ function prepareBengali(): Promise<void> | undefined {
 
 async function loadLogo(url: string | null | undefined): Promise<HTMLImageElement | undefined> {
   if (!url) return undefined;
-  return new Promise(resolve => {
-    const image = new Image();
-    image.crossOrigin = 'anonymous';
-    const timer = setTimeout(() => resolve(undefined), 4000);
-    image.onload = () => { clearTimeout(timer); resolve(image); };
-    image.onerror = () => { clearTimeout(timer); resolve(undefined); };
-    image.src = mediaUrl(url);
-  });
+  let blobUrl: string | undefined;
+  try {
+    const resolved = mediaUrl(url);
+    if (nativeMediaNeedsDownload(resolved)) blobUrl = await loadMediaBlobUrl(resolved, AbortSignal.timeout(4000));
+    return await new Promise(resolve => {
+      const image = new Image();
+      image.crossOrigin = 'anonymous';
+      const timer = setTimeout(() => resolve(undefined), 4000);
+      image.onload = () => { clearTimeout(timer); resolve(image); };
+      image.onerror = () => { clearTimeout(timer); resolve(undefined); };
+      image.src = blobUrl ?? resolved;
+    });
+  } catch { return undefined; }
+  finally { if (blobUrl) URL.revokeObjectURL(blobUrl); }
 }
 
 function addLogo(pdf: jsPDF, image: HTMLImageElement | undefined, x: number, y: number) {

@@ -1,4 +1,4 @@
-import { mediaUrl } from './api';
+import { MediaImage } from './MediaImage';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AlertCircle, LoaderCircle, PackageOpen, X } from 'lucide-react';
 
@@ -41,7 +41,7 @@ export function ProductArt({ emoji, category, imageUrl, small = false }: { emoji
   useEffect(() => setImageFailed(false), [imageUrl]);
   const colours = ['sage', 'peach', 'lavender', 'sand', 'blue'];
   const colour = colours[[...(category ?? emoji ?? '')].reduce((n, c) => n + c.charCodeAt(0), 0) % colours.length];
-  return <div className={`product-art ${colour} ${small ? 'art-small' : ''} ${imageUrl && !imageFailed ? 'has-photo' : ''}`} aria-hidden="true">{imageUrl && !imageFailed ? <img src={mediaUrl(imageUrl)} alt="" loading="lazy" onError={() => setImageFailed(true)} /> : <span>{emoji || '📦'}</span>}</div>;
+  return <div className={`product-art ${colour} ${small ? 'art-small' : ''} ${imageUrl && !imageFailed ? 'has-photo' : ''}`} aria-hidden="true">{imageUrl && !imageFailed ? <MediaImage src={imageUrl} alt="" loading="lazy" onFailure={() => setImageFailed(true)} /> : <span>{emoji || '📦'}</span>}</div>;
 }
 
 export function SubmitButton({ busy, children, className = 'button button-primary', disabled = false }: { busy: boolean; children: ReactNode; className?: string; disabled?: boolean }) {

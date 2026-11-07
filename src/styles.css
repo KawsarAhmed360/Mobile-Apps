@@ -937,7 +937,7 @@ tbody tr:last-child td { border-bottom: 0; }
   .app-shell .table-toolbar .button,
   .app-shell .review-heading .button,
   .app-shell .daily-note .button { min-height: 44px; padding: 11px 13px; font-size: 13px; }
-  .app-shell .page-actions { display: flex; flex-direction: row; width: 100%; gap: 10px; padding-top: 8px; }
+  .app-shell .page-actions { display: flex; flex-wrap: wrap; width: 100%; gap: 10px; padding-top: 8px; }
   .app-shell .page-actions:empty { display: none; }
   .app-shell .page-actions > .button { display: inline-flex; flex: 1; }
   .app-shell .page-actions .button-outline { display: inline-flex; }

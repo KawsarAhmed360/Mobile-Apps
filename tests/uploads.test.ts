@@ -164,7 +164,13 @@ describe('Photo upload storage and permissions', () => {
     assert.equal(image.status, 200);
     assert.equal(image.headers.get('content-type'), 'image/png');
     assert.equal(image.headers.get('x-content-type-options'), 'nosniff');
+    assert.match(image.headers.get('vary') ?? '', /Origin/i);
     assert.deepEqual(Buffer.from(await image.arrayBuffer()), png);
+    const nativeImage = await fetch(`${base}${result.body.url}`, { headers: { Origin: 'https://localhost' } });
+    assert.equal(nativeImage.status, 200);
+    assert.equal(nativeImage.headers.get('access-control-allow-origin'), 'https://localhost');
+    assert.match(nativeImage.headers.get('vary') ?? '', /Origin/i);
+    assert.deepEqual(Buffer.from(await nativeImage.arrayBuffer()), png);
     assert.equal((await fetch(`${base}/api/media/not-a-photo`)).status, 404);
     assert.equal((await fetch(`${base}/api/media/00000000-0000-4000-8000-000000000000`)).status, 404);
   });

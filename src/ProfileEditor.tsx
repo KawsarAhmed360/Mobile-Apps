@@ -1,7 +1,8 @@
+import { MediaImage } from './MediaImage';
 import { useState, type FormEvent } from 'react';
 import { CheckCircle2, Save, UserRound } from 'lucide-react';
 import type { User } from '../shared/types';
-import { api, mediaUrl } from './api';
+import { api } from './api';
 import { ErrorNotice, Field, SubmitButton } from './components';
 import { CloudUploadField, type CloudUpload } from './uploads';
 
@@ -33,7 +34,7 @@ export function ProfileEditor({ user, onUpdate }: { user: User; onUpdate: (user:
   const locked = !!busy || uploading;
   return <section className="account-verification-section profile-editor">
     <div className="account-section-title"><UserRound size={20}/><div><h3>Your profile</h3><p>Make your account your own. Your shop owner can see your profile and contact details.</p></div></div>
-    {user.avatarUrl && <div className="self-photo-preview"><img src={mediaUrl(user.avatarUrl)} alt="Your profile photo"/><button type="button" className="text-button" disabled={locked} onClick={() => void savePhoto(null)}>Remove current photo</button></div>}
+    {user.avatarUrl && <div className="self-photo-preview"><MediaImage src={user.avatarUrl} alt="Your profile photo"/><button type="button" className="text-button" disabled={locked} onClick={() => void savePhoto(null)}>Remove current photo</button></div>}
     <CloudUploadField purpose="profile-avatar" value={pendingPhoto} disabled={!!busy} onBusyChange={setUploading} onChange={photo => { setPendingPhoto(photo); if (photo) void savePhoto(photo); }}/>
     {pendingPhoto && error && <button className="button button-outline button-small" disabled={locked} onClick={() => void savePhoto(pendingPhoto)}>Retry saving photo</button>}
     <form className="form-stack" onSubmit={saveDetails}>
