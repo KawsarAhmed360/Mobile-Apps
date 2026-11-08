@@ -26,20 +26,24 @@ export function AccountPanel({ user, onUpdate, onClose, onSignOut, onActivated }
   const recaptcha = useRef<HTMLDivElement>(null);
   const challenge = useRef<PhoneChallenge | null>(null);
   const mounted = useRef(true);
+  const emailPending = !user.emailVerified;
+  const phonePending = !user.phoneVerified;
 
   useEffect(() => {
+    let active = true;
     mounted.current = true;
     api<VerificationConfig>('/config').then(async result => {
-      if (!mounted.current) return;
+      if (!active) return;
       setConfig(result);
-      if (result.verification.email) {
+      const canVerifyPhone = phonePending && result.verification.phone && phoneVerificationSupported();
+      if (result.verification.email && result.firebase && (emailPending || canVerifyPhone)) {
         const session = await verificationSession(result, user.email);
-        if (mounted.current) { setConnected(session.connected); setAnotherAccount(session.anotherAccount); }
+        if (active) { setConnected(session.connected); setAnotherAccount(session.anotherAccount); }
       }
-    }).catch(err => { if (mounted.current) setError(err instanceof Error ? err.message : 'Could not load account settings.'); })
-      .finally(() => { if (mounted.current) setLoading(false); });
-    return () => { mounted.current = false; challenge.current?.dispose(); };
-  }, [user.id, user.email]);
+    }).catch(err => { if (active) setError(err instanceof Error ? err.message : 'Could not load account settings.'); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; mounted.current = false; challenge.current?.dispose(); };
+  }, [user.id, user.email, emailPending, phonePending]);
   useEffect(() => {
     if (!emailWait && !phoneWait) return;
     const timer = setInterval(() => { setEmailWait(value => Math.max(0, value - 1)); setPhoneWait(value => Math.max(0, value - 1)); }, 1000);
@@ -56,7 +60,10 @@ export function AccountPanel({ user, onUpdate, onClose, onSignOut, onActivated }
   const connect = async (switchAccount = false) => {
     if (!config) return;
     await connectVerificationAccount(config, user.email, password, switchAccount);
-    if (mounted.current) { setConnected(true); setAnotherAccount(false); setPassword(''); setNotice('Your verification account is connected. You can now send an email verification link.'); }
+    if (mounted.current) {
+      setConnected(true); setAnotherAccount(false); setPassword('');
+      setNotice(emailPending ? 'Your verification account is connected. You can now send an email verification link.' : 'You can now request an SMS code.');
+    }
   };
   const sync = async () => {
     if (!config) return;
@@ -64,7 +71,7 @@ export function AccountPanel({ user, onUpdate, onClose, onSignOut, onActivated }
     const updated = await post<User>('/auth/verify-contact', { idToken });
     if (!mounted.current) return;
     onUpdate(updated);
-    setNotice(updated.emailVerified && updated.phoneVerified ? 'Your email and phone number are verified.' : updated.emailVerified ? 'Your email is verified. You can now verify your phone number.' : 'Your contact details have been checked. Open the email link or finish the SMS step to verify them.');
+    setNotice(updated.emailVerified && updated.phoneVerified ? 'Your email and phone number are verified.' : updated.emailVerified ? 'Your email is verified.' : 'Open the verification link in your inbox, then check again.');
   };
   const sendEmail = () => run('email', async () => {
     if (!config) return;
@@ -92,6 +99,12 @@ export function AccountPanel({ user, onUpdate, onClose, onSignOut, onActivated }
 
   const configuredEmail = config?.verification.email && !!config.firebase;
   const configuredPhone = config?.verification.phone && phoneVerificationSupported();
+  const connectForm = <form className="form-stack" onSubmit={event => { event.preventDefault(); void run('connect', () => connect(false)); }}>
+    <PasswordField label="Verification password" hint={emailPending ? 'Use the password you chose for your verification account.' : 'Use your verification password to continue with SMS.'} autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} minLength={6} maxLength={128} required placeholder="At least 6 characters" disabled={!!busy} />
+    <SubmitButton busy={busy === 'connect'} disabled={!!busy}><Link2 size={16} />{emailPending ? 'Connect verification account' : 'Continue to SMS verification'}</SubmitButton>
+    {anotherAccount && <button className="button button-outline" type="button" disabled={!!busy || !password} onClick={() => void run('switch', () => connect(true))}>Switch to my account</button>}
+  </form>;
+  const checkButton = <button className="button button-primary" disabled={!!busy || !connected} onClick={() => void run('check', sync)}>{busy === 'check' ? <LoaderCircle size={16} className="spin" /> : <RefreshCw size={16} />}Check verification</button>;
   return <Modal title="Your SmartShop account" eyebrow={user.role === 'owner' ? 'SHOP OWNER' : user.role === 'staff' ? 'SHOP STAFF' : 'CUSTOMER ACCOUNT'} onClose={onClose} wide>
     <style>{accountPanelStyles}</style>
     <div className="account-profile"><div className="account-profile-avatar">{user.avatarUrl ? <MediaImage src={user.avatarUrl} alt="Your profile" className="account-photo"/> : user.name.charAt(0).toUpperCase()}</div><div><h3>{user.name}</h3><p>@{user.username}</p></div><ShieldCheck size={26} /></div>
@@ -102,20 +115,23 @@ export function AccountPanel({ user, onUpdate, onClose, onSignOut, onActivated }
     <Field label="Registered email"><input value={user.email} type="email" readOnly /></Field>
     {user.phoneVerified && user.phone && <div className="verified-phone"><CheckCircle2 size={16} />{user.phone}</div>}
     {loading ? <Loading label="Loading verification options…" /> : <>
-      {!configuredEmail && <div className="notice notice-info account-service-notice"><CircleHelp size={19} /><span>Email and phone verification are awaiting the shop’s verification service setup. Your account is saved; verification will become available here after setup.</span></div>}
-      {configuredEmail && <section className="account-verification-section"><div className="account-section-title"><Mail size={20} /><div><h3>Verify your email</h3><p>Confirm that you can receive messages at your registered email address.</p></div></div>
-        {!connected && <form className="form-stack" onSubmit={event => { event.preventDefault(); void run('connect', () => connect(false)); }}><PasswordField label="Verification password" hint="Use the password you chose for your verification account." autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} minLength={6} maxLength={128} required placeholder="At least 6 characters" disabled={!!busy} /><SubmitButton busy={busy === 'connect'} disabled={!!busy}><Link2 size={16} />Connect verification account</SubmitButton>{anotherAccount && <button className="button button-outline" type="button" disabled={!!busy || !password} onClick={() => void run('switch', () => connect(true))}>Switch to my account</button>}</form>}
+      {emailPending && !configuredEmail && <div className="notice notice-info account-service-notice"><CircleHelp size={19} /><span>Email and phone verification are awaiting the shop’s verification service setup. Your account is saved; verification will become available here after setup.</span></div>}
+      {emailPending && configuredEmail && <section className="account-verification-section"><div className="account-section-title"><Mail size={20} /><div><h3>Verify your email</h3><p>Confirm that you can receive messages at your registered email address.</p></div></div>
+        {!connected && connectForm}
         {connected && <p className="verification-connected"><CheckCircle2 size={15} />Verification account connected</p>}
-        <div className="verification-actions"><button className="button button-outline" disabled={!!busy || !connected || emailWait > 0 || user.emailVerified} onClick={() => void sendEmail()}>{busy === 'email' ? <LoaderCircle size={16} className="spin" /> : <Mail size={16} />}{user.emailVerified ? 'Email verified' : emailWait ? `Resend in ${emailWait}s` : 'Send verification email'}</button><button className="button button-primary" disabled={!!busy || !connected} onClick={() => void run('check', sync)}>{busy === 'check' ? <LoaderCircle size={16} className="spin" /> : <RefreshCw size={16} />}Check verification</button></div>
+        <div className="verification-actions"><button className="button button-outline" disabled={!!busy || !connected || emailWait > 0} onClick={() => void sendEmail()}>{busy === 'email' ? <LoaderCircle size={16} className="spin" /> : <Mail size={16} />}{emailWait ? `Resend in ${emailWait}s` : 'Send verification email'}</button>{checkButton}</div>
       </section>}
       <section className="account-verification-section"><div className="account-section-title"><Phone size={20} /><div><h3>Verify your phone</h3><p>Receive a one-time SMS code on your own phone number.</p></div></div>
         {!config?.verification.phone && <p className="account-pending-note">SMS verification is awaiting service activation by the shop owner.</p>}
         {config?.verification.phone && !phoneVerificationSupported() && <p className="account-pending-note">Phone verification is not available in this Android build yet. The shop owner needs to finish the Android verification setup.</p>}
         <Field label="Phone number" hint="Include your country code. Bangladesh numbers start with +880."><input type="tel" autoComplete="tel" inputMode="tel" value={phone} onChange={event => setPhone(event.target.value)} maxLength={16} placeholder="+8801XXXXXXXXX" disabled={!!busy || !configuredPhone || user.phoneVerified} /></Field>
         <div ref={recaptcha} className="phone-recaptcha" />
-        {configuredPhone && !connected && <p className="account-pending-note">Connect your email verification account above before requesting an SMS.</p>}
-        {configuredPhone && connected && !user.emailVerified && <p className="account-pending-note">Verify your email and choose “Check verification” before requesting an SMS.</p>}
-        <button className="button button-outline button-full" disabled={!!busy || !configuredPhone || !connected || !user.emailVerified || phoneWait > 0 || user.phoneVerified} onClick={() => void sendPhone()}>{busy === 'sms' ? <LoaderCircle size={16} className="spin" /> : <Phone size={16} />}{user.phoneVerified ? 'Phone verified' : phoneWait ? `Request another code in ${phoneWait}s` : 'Send SMS code'}</button>
+        {configuredPhone && phonePending && emailPending && <p className="account-pending-note">Verify your email before requesting an SMS.</p>}
+        {configuredPhone && phonePending && !emailPending && !connected && connectForm}
+        <div className="verification-actions">
+          <button className="button button-outline button-full" disabled={!!busy || !configuredPhone || !connected || emailPending || phoneWait > 0 || !phonePending} onClick={() => void sendPhone()}>{busy === 'sms' ? <LoaderCircle size={16} className="spin" /> : <Phone size={16} />}{user.phoneVerified ? 'Phone verified' : phoneWait ? `Request another code in ${phoneWait}s` : 'Send SMS code'}</button>
+          {configuredPhone && phonePending && !emailPending && connected && checkButton}
+        </div>
         {codeSent && <form className="form-stack phone-code-form" onSubmit={confirmPhone}><Field label="SMS verification code"><input value={code} onChange={event => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" minLength={6} maxLength={6} required placeholder="6-digit code" /></Field><SubmitButton busy={busy === 'confirm'} disabled={!!busy || code.length !== 6}><ShieldCheck size={17} />Verify phone number</SubmitButton></form>}
       </section>
     </>}
