@@ -13,7 +13,7 @@ export function HelpPage() {
       <span className="tutorial-icon"><PlaySquare size={22} aria-hidden="true" /></span>
       <div>
         <h2 id="tutorial-title">SmartShop quick tour</h2>
-        <p lang="bn">পণ্য খোঁজা, স্টক দেখা, নতুন বিক্রি ও রিপোর্ট তৈরির বাংলা ভিডিও।</p>
+        <p lang="bn">বাংলা কণ্ঠে পণ্য খোঁজা, স্টক দেখা, নতুন বিক্রি ও রিপোর্ট তৈরির টিউটোরিয়াল।</p>
       </div>
     </div>
     <video className="tutorial-video" aria-labelledby="tutorial-title" src={tutorialVideo} poster={tutorialPoster}
