@@ -17,9 +17,11 @@ import { ProductComments } from './community';
 import { DeleteProductDialog, ProductFormDialog } from './ProductFormDialog';
 import { PdfDownloadButton } from './PdfDownloadButton';
 import { ReportsDialog } from './ReportsDialog';
+import { HelpPage } from './HelpPage';
 import { asCents, dayLabel, Empty, ErrorNotice, Field, Loading, Modal, money, ProductArt, SubmitButton } from './components';
 
-type Page = 'dashboard' | 'inventory' | 'sales' | 'customers' | 'catalog' | 'shop' | 'settings';
+type Page = 'dashboard' | 'inventory' | 'sales' | 'customers' | 'catalog' | 'shop' | 'settings' | 'help';
+type NavigationItem = { id: Page; label: string; mobileLabel?: string; icon: typeof CircleHelp };
 type Dialog = 'login' | 'product' | 'product-edit' | 'product-delete' | 'purchase' | 'expense' | 'reports' | 'account' | 'connection' | null;
 type ProductPage = { items: Product[]; total: number; page: number; pages: number; categories: string[] };
 
@@ -38,13 +40,19 @@ function useResource<T>(path: string | null, revision = 0) {
   return { data, loading, error };
 }
 
-const ownerNavigation = [
-  { id: 'dashboard' as Page, label: 'Overview', icon: LayoutDashboard },
-  { id: 'inventory' as Page, label: 'Products & stock', icon: Package },
-  { id: 'sales' as Page, label: 'New sale', icon: ShoppingCart },
-  { id: 'customers' as Page, label: 'Customers', icon: Users },
-  { id: 'settings' as Page, label: 'Shop settings', icon: SlidersHorizontal },
+const ownerNavigation: NavigationItem[] = [
+  { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
+  { id: 'inventory', label: 'Products & stock', mobileLabel: 'Stock', icon: Package },
+  { id: 'sales', label: 'New sale', icon: ShoppingCart },
+  { id: 'customers', label: 'Customers', icon: Users },
+  { id: 'settings', label: 'Shop settings', icon: SlidersHorizontal },
 ];
+const storefrontNavigation: NavigationItem[] = [
+  { id: 'catalog', label: 'Shop products', mobileLabel: 'Products', icon: ShoppingBasket },
+  { id: 'shop', label: 'Visit our shop', mobileLabel: 'Our shop', icon: MapPin },
+];
+const helpNavigation: NavigationItem = { id: 'help', label: 'Help', icon: CircleHelp };
+const publicPages = new Set<Page>(['catalog', 'shop', 'help']);
 
 const pageTitles: Record<Page, { title: string; subtitle: string }> = {
   dashboard: { title: 'A good day to grow.', subtitle: 'Here’s what’s happening in your shop today.' },
@@ -54,6 +62,7 @@ const pageTitles: Record<Page, { title: string; subtitle: string }> = {
   catalog: { title: 'Good things, close to home.', subtitle: 'Explore what’s available at your neighbourhood shop.' },
   settings: { title: 'Make your shop your own.', subtitle: 'Update your owner information, shop contact and location.' },
   shop: { title: 'Your neighbourhood shop.', subtitle: 'A little closer. A little more convenient.' },
+  help: { title: 'SmartShop Help', subtitle: 'Watch how to find products, record a sale and download a report.' },
 };
 
 export default function App() {
@@ -67,8 +76,10 @@ export default function App() {
   const [search, setSearch] = useState('');
   const shop = useResource<Shop>('/shop', revision);
   const staff = user?.role === 'owner' || user?.role === 'staff';
-  const ownerView = !!staff && !['catalog', 'shop'].includes(page);
+  const ownerView = !!staff && (page === 'help' || !publicPages.has(page));
   const managementNavigation = ownerNavigation.filter(item => item.id !== 'settings' || user?.role === 'owner');
+  const navigation = [...(ownerView ? managementNavigation : storefrontNavigation), helpNavigation];
+  const breadcrumb = page === 'shop' ? 'Location & details' : page === 'catalog' ? 'Products' : navigation.find(item => item.id === page)?.label;
   const refresh = useCallback(() => setRevision(value => value + 1), []);
   const notify = useCallback((message: string) => { setToast(message); refresh(); }, [refresh]);
   useEffect(() => subscribeToChanges(refresh), [refresh]);
@@ -87,14 +98,17 @@ export default function App() {
     let restoreSequence = 0;
     const restore = () => {
       const sequence = ++restoreSequence;
-      if (!hasAccessToken()) { setUser(null); setPage(current => ['catalog','shop'].includes(current) ? current : 'catalog'); return; }
+      if (!hasAccessToken()) { setUser(null); setPage(current => publicPages.has(current) ? current : 'catalog'); return; }
       api<User>('/auth/me').then(value => {
         if (!active || sequence !== restoreSequence || !hasAccessToken()) return;
         const canManage = value.role === 'owner' || value.role === 'staff';
         const firstRestore = !restoredOnce.current;
         restoredOnce.current = true;
         setUser(value);
-        setPage(current => !canManage && !['catalog','shop'].includes(current) ? 'catalog' : firstRestore && canManage ? 'dashboard' : current);
+        setPage(current => {
+          if (!canManage && !publicPages.has(current)) return 'catalog';
+          return firstRestore && canManage && current !== 'help' ? 'dashboard' : current;
+        });
       }).catch(error => {
         if (active && sequence === restoreSequence && error instanceof ApiError && error.status === 401) { setAccessToken(null); setUser(null); setPage('catalog'); }
       });
@@ -117,7 +131,7 @@ export default function App() {
       <button className="brand" onClick={() => navigate(staff ? 'dashboard' : 'catalog')} aria-label="SmartShop home"><span className="brand-icon"><ShoppingBag size={25} strokeWidth={1.8} /><span /></span><span>smart<span className="brand-light">shop</span><small>YOUR SHOP. SIMPLIFIED.</small></span></button>
       <div className="shop-identity"><div className="shop-avatar"><Store size={20} /></div><div><strong>{shop.data?.name || 'SmartShop'}</strong><span>Single-shop workspace</span></div><span className="status-dot" /></div>
       <p className="nav-section">{ownerView ? 'MANAGE YOUR SHOP' : 'DISCOVER YOUR SHOP'}</p>
-      <nav aria-label="Main navigation">{(ownerView ? managementNavigation : [{ id: 'catalog' as Page, label: 'Shop products', icon: ShoppingBasket }, { id: 'shop' as Page, label: 'Visit our shop', icon: MapPin }]).map(item => <button key={item.id} className={`nav-item ${page === item.id ? 'active' : ''}`} onClick={() => navigate(item.id)}><item.icon size={20} /><span>{item.label}</span>{page === item.id && <span className="nav-active-dot" />}</button>)}</nav>
+      <nav aria-label="Main navigation">{navigation.map(item => <button key={item.id} className={`nav-item ${page === item.id ? 'active' : ''}`} aria-current={page === item.id ? 'page' : undefined} onClick={() => navigate(item.id)}><item.icon size={20} /><span>{item.label}</span>{page === item.id && <span className="nav-active-dot" />}</button>)}</nav>
       {ownerView && <div className="sidebar-secondary"><p className="nav-section">A DIFFERENT PERSPECTIVE</p><button className="nav-item" onClick={() => navigate('catalog')}><Store size={20} /><span>Customer storefront</span><ArrowUpRight size={15} /></button></div>}
       {!ownerView && staff && <div className="sidebar-secondary"><button className="nav-item" onClick={() => navigate('dashboard')}><LayoutDashboard size={20} /><span>Back to dashboard</span><ArrowRight size={15} /></button></div>}
       <div className="sidebar-bottom"><div className="help-card"><div className="help-icon"><Leaf size={22} /></div><strong>A little smarter, every day.</strong><p>One place for your products, people and everyday numbers.</p></div>{user ? <div className="account"><span className="account-avatar">{user.avatarUrl ? <MediaImage src={user.avatarUrl} alt="Your profile" className="account-photo"/> : user.name.charAt(0).toUpperCase()}</span><div><strong>{user.name}</strong><span>{user.role === 'owner' ? 'Shop owner' : user.role === 'staff' ? 'Team member' : 'Customer'}</span></div><button className="icon-button" aria-label="Sign out" onClick={logout}><LogOut size={18} /></button></div> : <button className="button button-primary login-sidebar" onClick={() => setDialog('login')}><LogIn size={17} /> Sign in</button>}</div>
@@ -125,7 +139,7 @@ export default function App() {
 
     <div className="main-column">
       <div className="preview-banner"><span className="preview-dot" /><span>Development preview <span className="banner-separator">·</span> {shop.data?.demo ? 'Sample shop information' : 'Your connected shop'}</span><span className="preview-right">SmartShop on your Mac <Sparkles size={12} /></span></div>
-      <header className="topbar"><div className="mobile-brand"><ShoppingBag size={22} /><strong>smart<span>shop</span></strong></div><div className="breadcrumb"><span>{ownerView ? 'Workspace' : 'Our shop'}</span><ChevronRight size={14} /><strong>{ownerView ? ownerNavigation.find(n => n.id === page)?.label : page === 'shop' ? 'Location & details' : 'Products'}</strong></div><div className="topbar-actions">{staff && <StockAlerts revision={revision} onOpenStock={()=>navigate('inventory')} />}<button className="icon-button" aria-label="Shop connection settings" onClick={()=>setDialog('connection')}><SlidersHorizontal size={18}/></button><span className="date-label"><Clock3 size={15} />{today}</span>{ownerView && <button className="icon-button storefront-switch" aria-label="Open customer storefront" title="Customer storefront" onClick={() => navigate('catalog')}><Store size={19} /></button>}{user ? <button className="topbar-account" aria-label={`Your account: ${user.name}`} onClick={()=>setDialog('account')}>{user.avatarUrl ? <MediaImage src={user.avatarUrl} alt="Your profile" className="account-photo"/> : user.name.charAt(0).toUpperCase()}</button> : <button className="button button-small button-outline" onClick={() => setDialog('login')}>Sign in <ArrowRight size={15} /></button>}</div></header>
+      <header className="topbar"><div className="mobile-brand"><ShoppingBag size={22} /><strong>smart<span>shop</span></strong></div><div className="breadcrumb"><span>{ownerView ? 'Workspace' : 'Our shop'}</span><ChevronRight size={14} /><strong>{breadcrumb}</strong></div><div className="topbar-actions">{staff && <StockAlerts revision={revision} onOpenStock={()=>navigate('inventory')} />}<button className="icon-button" aria-label="Shop connection settings" onClick={()=>setDialog('connection')}><SlidersHorizontal size={18}/></button><span className="date-label"><Clock3 size={15} />{today}</span>{ownerView && <button className="icon-button storefront-switch" aria-label="Open customer storefront" title="Customer storefront" onClick={() => navigate('catalog')}><Store size={19} /></button>}{user ? <button className="topbar-account" aria-label={`Your account: ${user.name}`} onClick={()=>setDialog('account')}>{user.avatarUrl ? <MediaImage src={user.avatarUrl} alt="Your profile" className="account-photo"/> : user.name.charAt(0).toUpperCase()}</button> : <button className="button button-small button-outline" onClick={() => setDialog('login')}>Sign in <ArrowRight size={15} /></button>}</div></header>
 
       <main className={`main-content ${page === 'sales' ? 'checkout-main' : ''}`}>
         <div className="page-heading">
@@ -146,12 +160,13 @@ export default function App() {
           {page === 'catalog' && <CatalogPage revision={revision} search={search} setSearch={setSearch} onSelect={setSelectedProduct} onShop={() => navigate('shop')} />}
           {page === 'settings' && user?.role === 'owner' && <><ShopSettings onUserUpdate={setUser} onSaved={()=>notify('Shop information updated.')} /><StaffAccess revision={revision} onSaved={refresh}/></>}
           {page === 'shop' && <ShopPage shop={shop.data} loading={shop.loading} error={shop.error} />}
+          {page === 'help' && <HelpPage />}
         </motion.div></AnimatePresence>
         <footer className="page-footer"><span><Leaf size={13} /> Made for everyday business.</span><span>SmartShop <span className="footer-dot">·</span> Android development preview</span></footer>
       </main>
     </div>
 
-    <nav className="mobile-nav" aria-label="Mobile navigation">{(ownerView ? managementNavigation : [{ id: 'catalog' as Page, label: 'Products', icon: ShoppingBasket }, { id: 'shop' as Page, label: 'Our shop', icon: MapPin }]).map(item => <button key={item.id} className={page === item.id ? 'active' : ''} onClick={() => navigate(item.id)}><item.icon size={21} /><span>{item.label === 'Products & stock' ? 'Stock' : item.label}</span></button>)}{!ownerView && <button onClick={() => user ? logout() : setDialog('login')}>{user ? <LogOut size={21} /> : <LogIn size={21} />}<span>{user ? 'Sign out' : 'Sign in'}</span></button>}</nav>
+    <nav className="mobile-nav" aria-label="Mobile navigation">{navigation.map(item => <button key={item.id} className={page === item.id ? 'active' : ''} aria-current={page === item.id ? 'page' : undefined} onClick={() => navigate(item.id)}><item.icon size={21} /><span>{item.mobileLabel ?? item.label}</span></button>)}{!ownerView && <button onClick={() => user ? logout() : setDialog('login')}>{user ? <LogOut size={21} /> : <LogIn size={21} />}<span>{user ? 'Sign out' : 'Sign in'}</span></button>}</nav>
 
     {dialog === 'connection' && <ConnectionPanel onClose={()=>setDialog(null)} onSaved={()=>window.location.reload()} />}
     {dialog === 'account' && user && <AccountPanel user={user} onUpdate={setUser} onClose={()=>setDialog(null)} onSignOut={logout} onActivated={onLogin} />}

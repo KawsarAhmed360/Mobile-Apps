@@ -1,0 +1,66 @@
+.tutorial-panel {
+  max-width: 900px;
+  padding: clamp(16px, 3vw, 28px);
+}
+
+.tutorial-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.tutorial-heading p {
+  margin-top: 4px;
+  color: #576c5f;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.tutorial-icon {
+  display: grid;
+  flex: 0 0 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 10px;
+  color: #216743;
+  background: #eaf4e9;
+}
+
+.tutorial-video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 10px;
+  background: #173d31;
+}
+
+.tutorial-error {
+  margin-top: 12px;
+  color: #a33232;
+  font-size: 14px;
+}
+
+.tutorial-error a {
+  text-decoration: underline;
+}
+
+.tutorial-steps {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  color: #36564a;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.tutorial-steps summary {
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.tutorial-steps ol {
+  list-style: decimal;
+  margin: 8px 0 0;
+  padding-inline-start: 23px;
+}
