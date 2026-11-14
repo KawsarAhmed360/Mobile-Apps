@@ -6,7 +6,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
+import { createTRPCClient, httpLink, TRPCClientError } from '@trpc/client';
 import { createApp, dhakaDate } from '../server/app.js';
+import type { AppRouter } from '../server/catalog-rpc.js';
 
 describe('SmartShop persistent API', () => {
   let directory: string;
@@ -88,6 +90,33 @@ describe('SmartShop persistent API', () => {
     assert.deepEqual(filtered.data.items.map((item: { id: number }) => item.id), expected.slice(1));
     const inventory = await request('/api/inventory');
     assert.deepEqual(inventory.data.filter((item: { category: string }) => item.category === fruit || item.category === bakery).map((item: { id: number }) => item.id), expected);
+  });
+
+  it('serves sorted, filtered public products through the tRPC client', async () => {
+    const client = createTRPCClient<AppRouter>({ links: [httpLink({ url: `${base}/api/trpc` })] });
+    for (const [name, category] of [['RPC Pear', 'RPC Fruit'], ['RPC Bread', 'RPC Bakery'], ['RPC Apple', 'RPC Fruit'], ['RPC Archived', 'RPC Hidden']]) {
+      const created = await request('/api/products', {
+        body: { name, category, unit: 'piece', price: 100, cost: 60, stock: 1, reorderLevel: 0, supplier: 'Private supplier', reference: 'Private reference' },
+      });
+      assert.equal(created.status, 201);
+      if (name === 'RPC Archived') assert.equal((await request(`/api/products/${created.data.id}`, { method: 'DELETE' })).status, 200);
+    }
+
+    const first = await client.catalog.products.query({ search: 'RPC', limit: 2 });
+    const second = await client.catalog.products.query({ search: 'RPC', limit: 2, page: 2 });
+    const filtered = await client.catalog.products.query({ category: 'RPC Fruit', search: 'Apple' });
+    assert.deepEqual(first.items.map(item => item.name), ['RPC Bread', 'RPC Apple']);
+    assert.deepEqual(second.items.map(item => item.name), ['RPC Pear']);
+    assert.deepEqual(filtered.items.map(item => item.name), ['RPC Apple']);
+    assert.deepEqual([first.total, first.pages, first.page, second.page], [3, 2, 1, 2]);
+    assert.deepEqual(first.categories.filter(category => category.startsWith('RPC ')), ['RPC Bakery', 'RPC Fruit']);
+    for (const item of [...first.items, ...second.items]) {
+      for (const field of ['cost', 'stock', 'reorderLevel', 'supplier', 'reference']) assert.equal(Object.hasOwn(item, field), false, `Public product exposes ${field}`);
+    }
+    const rest = await request('/api/products?search=RPC&limit=2', { auth: false });
+    assert.equal(rest.status, 200);
+    assert.deepEqual(first, rest.data);
+    await assert.rejects(client.catalog.products.query({ page: 0 }), error => error instanceof TRPCClientError && error.data?.httpStatus === 400);
   });
 
   it('records sale stock, due and profit atomically, and retries only once', async () => {

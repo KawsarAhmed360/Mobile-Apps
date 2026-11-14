@@ -12,6 +12,8 @@ import { documentMoney, type ShopDocument } from '../shared/document.js';
 import { customerHistoryDocument, customerPaymentDocument } from './ledger-documents.js';
 import { saleLineItems } from './sale-lines.js';
 import { mountReports } from './reports.js';
+import { catalogInput, catalogRpc, type CatalogInput } from './catalog-rpc.js';
+import type { ProductPage } from '../shared/types.js';
 
 type Row = Record<string, any>;
 type Role = 'owner' | 'staff' | 'customer';
@@ -694,15 +696,16 @@ export function createApp(options: CoreOptions) {
     if (!row) throw new ApiError(404, 'Shop not configured.');
     res.json(shopProfile(row));
   });
-  app.get('/api/products', (req, res) => {
-    const { search, category, page, limit } = z.object({ search: z.string().max(100).default(''), category: z.string().max(60).default(''), page: z.coerce.number().int().min(1).max(100_000).default(1), limit: z.coerce.number().int().min(1).max(100).default(8) }).parse(req.query);
+  const listPublicProducts = ({ search, category, page, limit }: CatalogInput): ProductPage => {
     const where = " WHERE p.archived_at IS NULL AND p.name LIKE ? ESCAPE '\\' AND (?='' OR p.category=?)";
     const escapedSearch = search.replace(/[\\%_]/g, '\\$&');
     const args = [`%${escapedSearch}%`, category, category];
     const total = one(`SELECT COUNT(*) n FROM products p${where}`, ...args)!.n;
     const items = all(`${productSql}${where} ${productOrder} LIMIT ? OFFSET ?`, ...args, limit, (page - 1) * limit).map(row => product(row));
-    res.json({ items, total, page, pages: Math.max(1, Math.ceil(total / limit)), categories: all('SELECT DISTINCT category FROM products WHERE archived_at IS NULL ORDER BY category COLLATE NOCASE, category').map(row => row.category) });
-  });
+    return { items, total, page, pages: Math.max(1, Math.ceil(total / limit)), categories: all('SELECT DISTINCT category FROM products WHERE archived_at IS NULL ORDER BY category COLLATE NOCASE, category').map(row => row.category) };
+  };
+  app.get('/api/products', (req, res) => res.json(listPublicProducts(catalogInput.parse(req.query))));
+  app.use('/api/trpc', catalogRpc(listPublicProducts));
   app.get('/api/products/:id', (req, res) => res.json(product(getProduct(z.coerce.number().int().positive().parse(req.params.id)))));
   const getReviews = (productId: number) => all('SELECT r.*,u.name author FROM reviews r JOIN users u ON u.id=r.user_id WHERE product_id=? ORDER BY created_at DESC,id DESC', productId).map(row => ({ id: row.id, productId: row.product_id, userId: row.user_id, author: row.author, rating: row.rating, body: row.body, createdAt: row.created_at }));
   app.get('/api/products/:id/reviews', (req, res) => { const id = z.coerce.number().int().positive().parse(req.params.id); getProduct(id); res.json(getReviews(id)); });

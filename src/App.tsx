@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Activity as ActivityIcon, ArrowDownLeft, ArrowDownToLine, ArrowRight, ArrowUpRight, BarChart3, Check, CheckCircle2, ChevronLeft, ChevronRight, CircleHelp, Clock3, CreditCard, FileText, LayoutDashboard, Leaf, LogIn, LogOut, MapPin, Minus, MoreHorizontal, Package, Pencil, Plus, Receipt, Search, ShoppingBag, ShoppingBasket, ShoppingCart, SlidersHorizontal, Sparkles, Star, Store, TrendingUp, Trash2, Users, Wallet, X } from 'lucide-react';
 import type { Activity, AuthResponse, Customer, Dashboard, InventoryProduct, Product, Review, Shop, User } from '../shared/types';
 import { ApiError, api, hasAccessToken, post, setAccessToken, setAuthSession, signOutSession, subscribeToChanges } from './api';
+import { fetchCatalogProducts } from './catalog-api';
 import { AuthDialog } from './AuthDialog';
 import { AccountPanel } from './AccountPanel';
 import ConnectionPanel from './ConnectionPanel';
@@ -23,21 +24,26 @@ import { asCents, dayLabel, Empty, ErrorNotice, Field, Loading, Modal, money, Pr
 type Page = 'dashboard' | 'inventory' | 'sales' | 'customers' | 'catalog' | 'shop' | 'settings' | 'help';
 type NavigationItem = { id: Page; label: string; mobileLabel?: string; icon: typeof CircleHelp };
 type Dialog = 'login' | 'product' | 'product-edit' | 'product-delete' | 'purchase' | 'expense' | 'reports' | 'account' | 'connection' | null;
-type ProductPage = { items: Product[]; total: number; page: number; pages: number; categories: string[] };
-
-function useResource<T>(path: string | null, revision = 0) {
+function useRequest<T>(load: (signal: AbortSignal) => Promise<T>, revision: number) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   useEffect(() => {
-    if (!path) { setLoading(false); return; }
-    let cancelled = false;
+    const controller = new AbortController();
     setLoading(true);
     setError('');
-    api<T>(path).then(value => { if (!cancelled) setData(value); }).catch(e => { if (!cancelled) setError(e.message || 'Could not load data.'); }).finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [path, revision]);
+    load(controller.signal)
+      .then(value => { if (!controller.signal.aborted) setData(value); })
+      .catch(error => { if (!controller.signal.aborted) setError(error.message || 'Could not load data.'); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [load, revision]);
   return { data, loading, error };
+}
+
+function useResource<T>(path: string, revision = 0) {
+  const load = useCallback((signal: AbortSignal) => api<T>(path, { signal }), [path]);
+  return useRequest(load, revision);
 }
 
 const ownerNavigation: NavigationItem[] = [
@@ -212,7 +218,8 @@ function CatalogPage({ revision, search, setSearch, onSelect, onShop }: { revisi
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState(search);
   useEffect(() => { const timeout = setTimeout(() => { setQuery(search); setPage(1); }, 220); return () => clearTimeout(timeout); }, [search]);
-  const result = useResource<ProductPage>(`/products?search=${encodeURIComponent(query)}&category=${encodeURIComponent(category)}&page=${page}&limit=8`, revision);
+  const loadProducts = useCallback((signal: AbortSignal) => fetchCatalogProducts({ search: query, category, page, limit: 8 }, signal), [query, category, page]);
+  const result = useRequest(loadProducts, revision);
   return <><section className="catalog-hero"><div><span className="hero-tag"><Leaf size={14} /> EVERYDAY ESSENTIALS, ALL IN ONE PLACE</span><h2>Your favourites.<br /><span>Just around the corner.</span></h2><p>Check what’s in stock before you stop by.</p><button className="text-button" onClick={onShop}>Find our shop <ArrowRight size={16} /></button></div><div className="hero-art" aria-hidden="true"><div className="hero-orbit" /><div className="hero-bag"><ShoppingBasket size={78} strokeWidth={1.1} /><span className="hero-leaf">🌿</span></div><span className="hero-fruit fruit-one">🍊</span><span className="hero-fruit fruit-two">🥛</span><span className="hero-fruit fruit-three">🍎</span><div className="hero-stock"><span className="status-dot" />Fresh finds, close by</div></div></section>
     <div className="catalog-toolbar"><div><h2>Explore the shelves <span className="muted-number">{result.data?.total ?? '—'}</span></h2><p>Something for every day.</p></div><SearchBox value={search} onChange={setSearch} placeholder="Search products…" /></div>
     <div className="category-list" aria-label="Filter products by category"><button className={!category ? 'category-chip active' : 'category-chip'} onClick={() => { setCategory(''); setPage(1); }}>All products</button>{result.data?.categories.map(item => <button className={category === item ? 'category-chip active' : 'category-chip'} key={item} onClick={() => { setCategory(item); setPage(1); }}>{item}</button>)}</div>
