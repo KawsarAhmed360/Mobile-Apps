@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
 import { test } from 'node:test';
-import { createApp } from '../server/app.js';
+import { createApp, dhakaDate } from '../server/app.js';
 
 test('date range reports include the Dhaka endpoints, preserve purchase details and require staff access', async () => {
   const fixture = createApp({ dbPath: ':memory:' });
@@ -71,11 +71,24 @@ test('date range reports include the Dhaka endpoints, preserve purchase details 
 
     const buyer = await request('/customers', { body: { name: 'Fixture Buyer' } });
     assert.equal(buyer.status, 201);
-    const sale = await request('/sales', { body: {
-      items: [{ productId, quantity: 1 }], customerId: buyer.data.id, paid: 10000, requestId: 'fixture-sale-coffee',
-    } });
+    const saleInput = { items: [{ productId, quantity: 1 }], customerId: buyer.data.id, paid: 10000, requestId: 'fixture-sale-coffee' };
+    const beforeSale = (await request('/dashboard')).data;
+    for (const invalidDate of ['2026-02-30', dhakaDate(new Date(Date.now() + 86_400_000))]) {
+      const invalid = await request('/sales', { body: { ...saleInput, businessDate: invalidDate } });
+      assert.equal(invalid.status, 400);
+    }
+    const sale = await request('/sales', { body: { ...saleInput, businessDate: date } });
     assert.equal(sale.status, 201);
-    fixture.db.prepare('UPDATE sales SET business_date=? WHERE id=?').run(date, sale.data.id);
+    assert.equal(sale.data.date, date);
+    assert.deepEqual(await request('/sales', { body: { ...saleInput, businessDate: date } }), sale);
+    assert.equal((await request('/sales', { body: { ...saleInput, businessDate: '2026-05-16' } })).status, 409);
+    const afterSale = (await request('/dashboard')).data;
+    assert.equal(afterSale.sales, beforeSale.sales);
+    assert.equal(afterSale.cashCollected, beforeSale.cashCollected);
+    const ledger = await request(`/customers/${buyer.data.id}/ledger`);
+    assert.equal(ledger.data.sales[0].date, date);
+    assert.equal(dhakaDate(new Date(ledger.data.sales[0].createdAt)), dhakaDate());
+    assert.equal((await request(`/sales/${sale.data.id}/invoice`)).data.subtitle, `Invoice #${sale.data.id}  |  ${date}`);
     for (const [amount, paymentDate] of [[20000, date], [49900, '2026-05-18']]) {
       const payment = await request(`/customers/${buyer.data.id}/payments`, {
         body: { amount, date: paymentDate, method: 'cash', requestId: `fixture-report-payment-${paymentDate}` },
@@ -83,7 +96,7 @@ test('date range reports include the Dhaka endpoints, preserve purchase details 
       assert.equal(payment.status, 201);
     }
     const sales = await request(`/reports?type=sales&${range}`);
-    assert.equal(sales.data.sections[0].rows[0][0], `#${sale.data.id}`);
+    assert.deepEqual(sales.data.sections[0].rows[0].slice(0, 2), [`#${sale.data.id}`, date]);
     assert.deepEqual(sales.data.sections[1].rows[0], [`#${sale.data.id}`, 'Renamed coffee', '1 box', 'BDT 799.00', 'BDT 799.00']);
     assert.equal(sales.data.totals.find((field: { label: string }) => field.label === 'Still due').value, 'BDT 499.00');
 

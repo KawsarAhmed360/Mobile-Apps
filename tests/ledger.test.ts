@@ -109,17 +109,19 @@ describe('Shop settings, customer ledgers and stock alerts', () => {
   it('allocates later payments to the oldest unpaid invoices and keeps ledger data after restart', async () => {
     const customer = await buyer();
     const first = (await request('/sales', { items: [{ productId: 1, quantity: 1 }], customerId: customer.id, paid: 1000, requestId: 'fifo-first-sale-001' })).data;
-    const second = (await request('/sales', { items: [{ productId: 3, quantity: 1 }], customerId: customer.id, paid: 0, requestId: 'fifo-second-sale-001' })).data;
+    const olderDate = dhakaDate(new Date(Date.now() - 86_400_000));
+    const second = (await request('/sales', { items: [{ productId: 3, quantity: 1 }], customerId: customer.id, paid: 0, businessDate: olderDate, requestId: 'fifo-second-sale-001' })).data;
     const receipt = await request(`/customers/${customer.id}/payments`, { amount: 8000, method: 'cash', requestId: 'fifo-receipt-001' });
     assert.equal(receipt.status, 201);
     await stop(); await start();
     const ledger = (await request(`/customers/${customer.id}/ledger`)).data;
     const firstRow = ledger.sales.find((sale: any) => sale.id === first.id);
     const secondRow = ledger.sales.find((sale: any) => sale.id === second.id);
-    assert.equal(firstRow.settled, 7800);
-    assert.equal(firstRow.due, 0);
-    assert.equal(secondRow.settled, 1200);
-    assert.equal(secondRow.due, 14300);
+    assert.equal(firstRow.settled, 1000);
+    assert.equal(firstRow.due, 6800);
+    assert.equal(secondRow.date, olderDate);
+    assert.equal(secondRow.settled, 8000);
+    assert.equal(secondRow.due, 7500);
     assert.equal(ledger.customer.due, 14300);
   });
 
@@ -179,6 +181,15 @@ describe('Shop settings, customer ledgers and stock alerts', () => {
     assert.equal(rejected.status, 400);
     assert.equal((await request('/inventory')).data.find((p: any) => p.id === 1).stock, stockAfter);
     assert.equal((await request('/dashboard')).data.sales, after.sales);
+    const pastDate = dhakaDate(new Date(Date.now() - 86_400_000));
+    const pastSale = await request('/sales', { ...body, previousDuePayment: 4800, businessDate: pastDate, requestId: 'backdated-checkout-001' });
+    assert.equal(pastSale.status, 201);
+    assert.equal(pastSale.data.date, pastDate);
+    const ledger = (await request(`/customers/${customer.id}/ledger`)).data;
+    assert.equal(ledger.payments.find((payment: { id: number }) => payment.id === pastSale.data.previousDueReceiptId).date, dhakaDate());
+    const withBackdatedSale = (await request('/dashboard')).data;
+    assert.equal(withBackdatedSale.sales, after.sales);
+    assert.equal(withBackdatedSale.cashCollected, after.cashCollected + 4800);
   });
 
   it('rejects concurrent overcollection and unauthorized ledger access', async () => {

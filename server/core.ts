@@ -397,7 +397,7 @@ export function createApp(options: CoreOptions) {
     let remaining = amount - openingAmount;
     const unpaidSales = all(`SELECT s.id,s.total-s.paid-COALESCE(SUM(a.amount),0) due
       FROM sales s LEFT JOIN receipt_allocations a ON a.sale_id=s.id
-      WHERE s.customer_id=? GROUP BY s.id HAVING due>0 ORDER BY s.created_at,s.id`, customerId);
+      WHERE s.customer_id=? GROUP BY s.id HAVING due>0 ORDER BY s.business_date,s.created_at,s.id`, customerId);
     for (const sale of unpaidSales) {
       if (remaining === 0) break;
       const allocated = Math.min(remaining, sale.due);
@@ -833,11 +833,14 @@ export function createApp(options: CoreOptions) {
     notify('catalog', body.productId); notify('alerts'); res.status(201).json(result);
   });
   app.post('/api/sales', auth, staff, (req: AuthRequest, res) => {
-    const body = z.object({ items: z.array(z.object({ productId: z.number().int().positive(), quantity })).min(1).max(100), customerId: z.number().int().positive().optional(), customerName: z.string().trim().max(80).default(''), paid: integer, requestId, previousDuePayment: integer.optional() }).parse(req.body);
+    const body = z.object({ items: z.array(z.object({ productId: z.number().int().positive(), quantity })).min(1).max(100), customerId: z.number().int().positive().optional(), customerName: z.string().trim().max(80).default(''), paid: integer, requestId, previousDuePayment: integer.optional(), businessDate: businessDate.optional() }).parse(req.body);
     const previousDuePayment = body.previousDuePayment ?? 0;
     if (new Set(body.items.map(item => item.productId)).size !== body.items.length) throw new ApiError(400, 'Combine duplicate product lines before confirming the sale.');
     if (previousDuePayment > 0 && !body.customerId) throw new ApiError(400, 'Choose an existing customer before collecting a previous balance.');
     const result = cachedRequest('sale', body.requestId, body, () => {
+      const today = dhakaDate();
+      const saleDate = body.businessDate ?? today;
+      if (saleDate > today) throw new ApiError(400, 'Sale date cannot be in the future.');
       const lines = body.items.map(item => { const p = getProduct(item.productId); if (p.stock < item.quantity) throw new ApiError(409, `Not enough stock for ${p.name}.`); return { ...item, product: p }; });
       const total = safeMoney(lines.reduce((sum, line) => sum + safeMoney(line.product.price * line.quantity), 0));
       const cost = safeMoney(lines.reduce((sum, line) => sum + safeMoney(line.product.cost * line.quantity), 0));
@@ -854,12 +857,12 @@ export function createApp(options: CoreOptions) {
         customerPhone = customer.phone; customerEmail = customer.email; customerAddress = customer.address;
         previousDue = customer.due;
         if (previousDuePayment > previousDue) throw new ApiError(400, 'The previous-balance payment exceeds this customer’s outstanding balance.');
-        if (previousDuePayment > 0) previousDueReceiptId = recordReceipt(customerId!, req.user!.id, previousDuePayment, 'cash', 'Previous balance collected at checkout', dhakaDate()).id;
+        if (previousDuePayment > 0) previousDueReceiptId = recordReceipt(customerId!, req.user!.id, previousDuePayment, 'cash', 'Previous balance collected at checkout', today).id;
       } else if (body.customerName) {
         customerId = Number(run('INSERT INTO customers(name,created_at) VALUES(?,?)', body.customerName, now()).lastInsertRowid);
       }
       const sale = run(`INSERT INTO sales(customer_id,total,paid,cost,created_at,business_date,customer_name,customer_phone,customer_email,customer_address,checkout_receipt_id)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?)`, customerId, total, body.paid, cost, now(), dhakaDate(), customerName, customerPhone, customerEmail, customerAddress, previousDueReceiptId);
+        VALUES(?,?,?,?,?,?,?,?,?,?,?)`, customerId, total, body.paid, cost, now(), saleDate, customerName, customerPhone, customerEmail, customerAddress, previousDueReceiptId);
       const id = Number(sale.lastInsertRowid);
       for (const line of lines) {
         run('INSERT INTO sale_items(sale_id,product_id,quantity,unit_price,unit_cost,product_name,product_unit) VALUES(?,?,?,?,?,?,?)', id, line.productId, line.quantity, line.product.price, line.product.cost, line.product.name, line.product.unit);
@@ -868,7 +871,7 @@ export function createApp(options: CoreOptions) {
         run('INSERT INTO stock_movements(product_id,quantity,type,reference_id,created_at) VALUES(?,?,?,?,?)', line.productId, -line.quantity, 'sale', id, now());
       }
       recordActivity('sale', `Sale #${id}`, customerName || 'Walk-in customer', total);
-      return { id, total, paid: body.paid, due: total - body.paid, previousDue, previousDuePayment, customerBalance: previousDue - previousDuePayment + total - body.paid, customerId, previousDueReceiptId };
+      return { id, date: saleDate, total, paid: body.paid, due: total - body.paid, previousDue, previousDuePayment, customerBalance: previousDue - previousDuePayment + total - body.paid, customerId, previousDueReceiptId };
     });
     notify('catalog'); notify('alerts'); if (previousDuePayment > 0) notify('payments'); res.status(201).json(result);
   });

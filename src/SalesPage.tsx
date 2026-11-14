@@ -6,11 +6,16 @@ import { asCents, Empty, ErrorNotice, Field, Loading, Modal, money, ProductArt, 
 import { newRequestId } from './requestId';
 import { PdfDownloadButton } from './PdfDownloadButton';
 
+const shopDate = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Dhaka', year: 'numeric', month: '2-digit', day: '2-digit',
+});
+
 export function SalesPage({revision,onSuccess}:{revision:number;onSuccess:(message:string)=>void}){
   const [products,setProducts]=useState<InventoryProduct[]>([]),[customers,setCustomers]=useState<Customer[]>([]);
   const [loading,setLoading]=useState(true),[loadError,setLoadError]=useState('');
   const [search,setSearch]=useState(''),[cart,setCart]=useState<Record<number,number>>({});
   const [customerId,setCustomerId]=useState(''),[customerName,setCustomerName]=useState(''),[received,setReceived]=useState('');
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [busy,setBusy]=useState(false),[error,setError]=useState(''),[locked,setLocked]=useState(false);
   const [receipt,setReceipt]=useState<SaleResult|null>(null);
   const pending=useRef<SaleInput|null>(null);
@@ -29,14 +34,26 @@ export function SalesPage({revision,onSuccess}:{revision:number;onSuccess:(messa
   const towardsEarlier=Math.min(Math.max(payment,0),previousDue);
   const towardsBill=Math.max(0,payment-towardsEarlier);
   const balance=Math.max(payable-payment,0);
-  const invalid=!rows.length||total<=0||!Number.isSafeInteger(payment)||payment<0||payment>payable||(towardsBill<total&&!selected&&!customerName.trim());
+  const today = shopDate.format(new Date());
+  const saleDate = selectedDate ?? today;
+  const invalid=!saleDate||saleDate>today||!rows.length||total<=0||!Number.isSafeInteger(payment)||payment<0||payment>payable||(towardsBill<total&&!selected&&!customerName.trim());
   function change(product:InventoryProduct,delta:number){if(locked)return;setCart(old=>({...old,[product.id]:Math.min(Math.max((old[product.id]??0)+delta,0),product.stock)}))}
   async function submit(event:FormEvent){
     event.preventDefault();if(busy||(!pending.current&&invalid))return;
-    if(!pending.current)pending.current={items:rows.map(product=>({productId:product.id,quantity:product.quantity})),...(selected?{customerId:selected.id}:customerName.trim()?{customerName:customerName.trim()}:{}),paid:towardsBill,previousDuePayment:towardsEarlier,requestId:newRequestId()};
+    if(!pending.current)pending.current={
+      items: rows.map(product => ({ productId: product.id, quantity: product.quantity })),
+      ...(selected ? { customerId: selected.id } : customerName.trim() ? { customerName: customerName.trim() } : {}),
+      paid: towardsBill,
+      previousDuePayment: towardsEarlier,
+      businessDate: saleDate,
+      requestId: newRequestId(),
+    };
     setBusy(true);setLocked(true);setError('');
     try{
-      const result=await post<SaleResult>('/sales',pending.current);setReceipt(result);setCart({});setReceived('');setCustomerId('');setCustomerName('');pending.current=null;setLocked(false);onSuccess(`Sale #${result.id} saved. Stock and customer balance updated.`);
+      const result=await post<SaleResult>('/sales',pending.current);
+      setReceipt(result);
+      setSelectedDate(null);
+      setCart({});setReceived('');setCustomerId('');setCustomerName('');pending.current=null;setLocked(false);onSuccess(`Sale #${result.id} saved. Stock and customer balance updated.`);
     }catch(e){setError(e instanceof Error?e.message:'Could not save this sale.');if(e instanceof ApiError&&e.status>=400&&e.status<500){pending.current=null;setLocked(false)}}finally{setBusy(false)}
   }
   return <><ErrorNotice>{loadError}</ErrorNotice><div className="checkout-layout">
@@ -45,7 +62,9 @@ export function SalesPage({revision,onSuccess}:{revision:number;onSuccess:(messa
     </section>
     <form className="panel checkout-cart" onSubmit={submit}><div className="panel-heading"><div><h2>Current sale</h2><p>{rows.reduce((sum,p)=>sum+p.quantity,0)} items in your basket</p></div></div>
       <div className="cart-items">{!rows.length?<Empty title="Ready when you are" message="Choose a product to start this sale."/>:rows.map(product=><div className="cart-row" key={product.id}><ProductArt emoji={product.emoji} category={product.category} imageUrl={product.imageUrl} small/><div className="cart-row-info"><strong>{product.name}</strong><span>{money(product.price)} / {product.unit}</span><div className="quantity-control"><button type="button" disabled={locked} aria-label={`Remove one ${product.name}`} onClick={()=>change(product,-1)}><Minus size={12}/></button><span>{product.quantity}</span><button type="button" disabled={locked||product.quantity>=product.stock} aria-label={`Add one ${product.name}`} onClick={()=>change(product,1)}><Plus size={12}/></button></div></div><strong>{money(product.price*product.quantity)}</strong></div>)}</div>
-      <div className="checkout-form"><Field label="Customer"><select value={customerId} disabled={locked} onChange={e=>{setCustomerId(e.target.value);setReceived('')}}><option value="">Walk-in / enter customer name</option>{customers.map(customer=><option key={customer.id} value={customer.id}>{customer.name}{customer.phone?` · ${customer.phone}`:''}{customer.due?` · Due ${money(customer.due)}`:''}</option>)}</select></Field>
+      <div className="checkout-form">
+        <Field label="Sale date"><input name="businessDate" type="date" value={saleDate} max={today} onChange={event => setSelectedDate(event.target.value)} required disabled={locked} /></Field>
+        <Field label="Customer"><select value={customerId} disabled={locked} onChange={e=>{setCustomerId(e.target.value);setReceived('')}}><option value="">Walk-in / enter customer name</option>{customers.map(customer=><option key={customer.id} value={customer.id}>{customer.name}{customer.phone?` · ${customer.phone}`:''}{customer.due?` · Due ${money(customer.due)}`:''}</option>)}</select></Field>
         {!selected&&<Field label="Customer name" hint="Required if this bill has an unpaid balance."><input value={customerName} disabled={locked} onChange={e=>setCustomerName(e.target.value)} maxLength={80} placeholder="Walk-in customer"/></Field>}
         {selected&&<div className="customer-checkout-info"><strong>{selected.name}</strong>{selected.phone&&<span>{selected.phone}</span>}{selected.address&&<span>{selected.address}</span>}</div>}
         <div className="bill-divider"/>
@@ -54,6 +73,7 @@ export function SalesPage({revision,onSuccess}:{revision:number;onSuccess:(messa
         <div className="checkout-total"><span>Total payable</span><strong>{money(payable)}</strong></div>
         <Field label="Amount received (৳)" hint="Leave blank for full payment. Money settles earlier dues first, then this bill."><div className="input-prefix"><span>৳</span><input type="number" min="0" max={payable/100} step="0.01" value={received} disabled={locked} placeholder={(payable/100).toFixed(2)} onChange={e=>setReceived(e.target.value)}/></div></Field>
         {!!previousDue&&<div className="payment-split"><div><span>For previous dues</span><strong>{money(towardsEarlier)}</strong></div><div><span>For this bill</span><strong>{money(towardsBill)}</strong></div></div>}
+        {saleDate && saleDate < today && towardsEarlier > 0 && <p className="form-note">Previous balance payments are recorded today.</p>}
         <div className="due-line"><span>Customer balance after this sale</span><strong>{money(balance)}</strong></div><ErrorNotice>{error}</ErrorNotice>
         {locked&&error&&<p className="form-note">Retry resends the same sale safely. Check the customer ledger before creating a replacement.</p>}
         <SubmitButton busy={busy} disabled={!locked&&invalid} className="button button-primary checkout-submit"><CheckCircle2 size={18}/>{locked?'Retry this sale':'Confirm sale & payment'}</SubmitButton>
@@ -63,7 +83,10 @@ export function SalesPage({revision,onSuccess}:{revision:number;onSuccess:(messa
   </div>
   {receipt && <Modal title="Sale and payment saved." eyebrow="SALE COMPLETE" onClose={() => setReceipt(null)}>
     <div className="receipt-success"><CheckCircle2 size={45}/><h3>Sale #{receipt.id}</h3><p>Your stock and customer ledger are up to date.</p></div>
-    <div className="receipt-lines"><div><span>New product bill</span><strong>{money(receipt.total)}</strong></div><div><span>Previous dues paid</span><strong>{money(receipt.previousDuePayment ?? 0)}</strong></div><div><span>Paid for this bill</span><strong>{money(receipt.paid)}</strong></div><div><span>Cash received</span><strong>{money(receipt.paid + (receipt.previousDuePayment ?? 0))}</strong></div><div><span>Customer balance</span><strong>{money(receipt.customerBalance ?? receipt.due)}</strong></div></div>
+    <div className="receipt-lines">
+      {receipt.date && <div><span>Sale date</span><strong>{receipt.date}</strong></div>}
+      <div><span>New product bill</span><strong>{money(receipt.total)}</strong></div><div><span>Previous dues paid</span><strong>{money(receipt.previousDuePayment ?? 0)}</strong></div><div><span>Paid for this bill</span><strong>{money(receipt.paid)}</strong></div><div><span>Cash received</span><strong>{money(receipt.paid + (receipt.previousDuePayment ?? 0))}</strong></div><div><span>Customer balance</span><strong>{money(receipt.customerBalance ?? receipt.due)}</strong></div>
+    </div>
     <div className="form-stack">
       <PdfDownloadButton path={`/sales/${receipt.id}/invoice`} label="Download sales invoice PDF" className="button button-primary button-full" />
       {!!receipt.customerId && !!receipt.previousDueReceiptId && <PdfDownloadButton path={`/customers/${receipt.customerId}/payments/${receipt.previousDueReceiptId}/invoice`} label="Download previous balance receipt" className="button button-outline button-full" />}

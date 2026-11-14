@@ -27,6 +27,6 @@ export interface Customer {
 export interface Activity { id: number; type: 'sale' | 'purchase' | 'expense' | 'payment'; title: string; amount: number; createdAt: string }
 export interface SaleInput {
   items: { productId: number; quantity: number }[];
-  customerId?: number; customerName?: string; paid: number; previousDuePayment?: number; requestId: string;
+  customerId?: number; customerName?: string; paid: number; previousDuePayment?: number; businessDate?: string; requestId: string;
 }
-export interface SaleResult { id: number; total: number; paid: number; due: number; previousDue?: number; previousDuePayment?: number; customerBalance?: number; customerId?: number | null; previousDueReceiptId?: number | null }
+export interface SaleResult { id: number; total: number; paid: number; due: number; date?: string; previousDue?: number; previousDuePayment?: number; customerBalance?: number; customerId?: number | null; previousDueReceiptId?: number | null }
