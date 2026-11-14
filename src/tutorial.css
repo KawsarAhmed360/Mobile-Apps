@@ -31,17 +31,17 @@
   display: block;
   width: 100%;
   aspect-ratio: 16 / 9;
+  min-height: 200px;
+  border: 0;
   border-radius: 10px;
   background: #173d31;
 }
 
-.tutorial-error {
-  margin-top: 12px;
-  color: #a33232;
+.tutorial-watch-link {
+  display: inline-block;
+  margin-top: 10px;
+  color: #216743;
   font-size: 14px;
-}
-
-.tutorial-error a {
   text-decoration: underline;
 }
 
